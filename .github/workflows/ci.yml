@@ -1,0 +1,66 @@
+name: Quality and tenant safety
+on:
+  pull_request:
+  push:
+    branches: [main, develop]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: testlab-ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: npm ci
+      - run: npm audit --audit-level=low
+      - run: npm run typecheck && npm run lint
+      - run: npm test
+      - run: python -m pip install -r legacy/v1/requirements-dev.txt
+      - run: python -m pytest -q legacy/v1/test_e2e.py tests/test_migration.py
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium-headless-shell
+      - run: npm run test:e2e
+      - run: npm run test:load
+      - name: Verify migration on local D1
+        run: npx wrangler d1 migrations apply DB --local
+      - name: Upload QA evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: testlab-quality-${{ github.sha }}
+          path: reports/*.json
+          retention-days: 14
+  staging:
+    needs: verify
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci && npm run build
+      - name: Check configured target and deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          APP_ORIGIN: ${{ vars.APP_ORIGIN }}
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN" && test -n "$CLOUDFLARE_ACCOUNT_ID" && test -n "$APP_ORIGIN"
+          node scripts/check-target.mjs staging
+          npx wrangler d1 migrations apply DB --env staging --remote
+          npx wrangler deploy --env staging
+          node scripts/smoke.mjs

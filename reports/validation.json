@@ -1,0 +1,61 @@
+{
+  "date": "2026-11-21",
+  "scope": "local workerd/D1/R2 + real Chromium; external auth providers mocked only at provider boundary",
+  "production_ready": false,
+  "github_repository": null,
+  "staging_url": null,
+  "production_url": null,
+  "real_v1_database_provided": false,
+  "tests": {
+    "unit_integration_passed": 45,
+    "unit_integration_failed": 0,
+    "legacy_passed": 5,
+    "migration_passed": 5,
+    "browser_passed": 7,
+    "browser_failed": 0,
+    "total_passed": 62
+  },
+  "typecheck": "passed",
+  "lint": "passed",
+  "build": "passed",
+  "local_d1_migration": "0001_core.sql applied; 49 commands",
+  "wrangler_deploy_dry_run": "passed; no upload performed",
+  "dependency_vulnerabilities": {
+    "info": 0,
+    "low": 0,
+    "moderate": 0,
+    "high": 0,
+    "critical": 0,
+    "total": 0
+  },
+  "load": {
+    "environment": "local workerd + SQLite-backed D1 + R2 emulation; external auth mocked; cloud CPU/network NOT measured",
+    "at": "2026-11-21T06:03:50.183Z",
+    "scenario": "100 concurrent students x 20 questions; batch autosave + refresh + concurrent duplicate finish + IDOR",
+    "concurrent_students": 100,
+    "questions_each": 20,
+    "requests": 700,
+    "p50_ms": 334.47,
+    "p95_ms": 794.79,
+    "max_ms": 892.83,
+    "errors": [],
+    "error_rate": 0,
+    "lost_answers": 0,
+    "duplicate_results": 0,
+    "cross_tenant_leaks": 0,
+    "target_p95_ms": 800,
+    "passed": true
+  },
+  "release_gate": "expected block: acceptance evidence/target/provider setup missing",
+  "external_blockers": [
+    "independent_domain_and_server",
+    "github_authenticated_repository_and_remote_ci",
+    "telegram_oidc_live_consent",
+    "email_sender_delivery",
+    "turnstile_live",
+    "owner_mfa_enrollment",
+    "cloud_cpu_and_quota_monitoring",
+    "remote_backup_restore_drill",
+    "actual_v1_cutover_review"
+  ]
+}

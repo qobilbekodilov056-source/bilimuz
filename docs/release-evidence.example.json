@@ -1,0 +1,83 @@
+{
+  "commit": "EXACT_CURRENT_GIT_HEAD",
+  "checked_at": "UTC_ISO_TIMESTAMP",
+  "origin": "https://INDEPENDENT_DOMAIN",
+  "checks": {
+    "tenant_isolation": {
+      "status": "not_run",
+      "evidence": ""
+    },
+    "unit_integration": {
+      "status": "not_run",
+      "evidence": ""
+    },
+    "browser_e2e": {
+      "status": "not_run",
+      "evidence": ""
+    },
+    "accessibility": {
+      "status": "not_run",
+      "evidence": ""
+    },
+    "security": {
+      "status": "not_run",
+      "evidence": ""
+    },
+    "load_100": {
+      "status": "not_run",
+      "evidence": ""
+    },
+    "backup_restore": {
+      "status": "not_run",
+      "evidence": ""
+    },
+    "legacy_migration_dry_run": {
+      "status": "not_run",
+      "evidence": ""
+    },
+    "telegram_live": {
+      "status": "not_run",
+      "evidence": ""
+    },
+    "email_live": {
+      "status": "not_run",
+      "evidence": ""
+    },
+    "turnstile_live": {
+      "status": "not_run",
+      "evidence": ""
+    },
+    "owner_mfa_live": {
+      "status": "not_run",
+      "evidence": ""
+    },
+    "staging_smoke": {
+      "status": "not_run",
+      "evidence": ""
+    },
+    "dns_https": {
+      "status": "not_run",
+      "evidence": ""
+    },
+    "server_target_confirmed": {
+      "status": "not_run",
+      "evidence": ""
+    },
+    "cloud_capacity": {
+      "status": "not_run",
+      "evidence": ""
+    },
+    "monitoring_live": {
+      "status": "not_run",
+      "evidence": ""
+    },
+    "support_contacts_verified": {
+      "status": "not_run",
+      "evidence": ""
+    },
+    "legacy_migration_reviewed": {
+      "status": "not_run",
+      "evidence": ""
+    }
+  }
+}

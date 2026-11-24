@@ -1,0 +1,49 @@
+name: Verified production release
+on:
+  workflow_dispatch:
+    inputs:
+      evidence_run_id:
+        description: "Run ID containing independently verified release-evidence artifact for this commit"
+        required: true
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: testlab-production
+  cancel-in-progress: false
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main'
+    environment: production
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v8
+        with:
+          name: release-evidence
+          run-id: ${{ inputs.evidence_run_id }}
+          github-token: ${{ github.token }}
+          path: tmp/release
+      - name: Enforce acceptance evidence for this exact commit
+        env:
+          RELEASE_EVIDENCE_FILE: tmp/release/release-evidence.json
+        run: npm run check:release
+      - run: npm run typecheck && npm run lint && npm test && npm run build
+      - name: Migrate, deploy and smoke
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          APP_ORIGIN: ${{ vars.APP_ORIGIN }}
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN" && test -n "$CLOUDFLARE_ACCOUNT_ID" && test -n "$APP_ORIGIN"
+          node scripts/check-target.mjs production
+          npx wrangler d1 migrations apply DB --env production --remote
+          npx wrangler deploy --env production
+          node scripts/smoke.mjs

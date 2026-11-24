@@ -1,0 +1,472 @@
+import React, { createContext, useContext, useEffect, useState } from "react";
+import { createRoot } from "react-dom/client";
+import {
+  BrowserRouter,
+  Link,
+  NavLink,
+  Navigate,
+  Outlet,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
+import {
+  ArrowDownToLine,
+  ArrowRight,
+  BarChart3,
+  Bell,
+  BookOpen,
+  BookMarked,
+  CalendarDays,
+  ChevronDown,
+  ChevronRight,
+  ClipboardList,
+  FolderOpen,
+  Grid2X2,
+  LifeBuoy,
+  LogOut,
+  Menu,
+  Search,
+  Settings,
+  ShieldCheck,
+  Store,
+  Users,
+  X,
+} from "lucide-react";
+import { api } from "./api";
+import { Busy, ErrorBox, ToastProvider, useData } from "./ui";
+import { AuthPage, TokenPage } from "./pages-auth";
+import {
+  Dashboard,
+  Questions,
+  GroupsStudents,
+  Cards,
+  Analytics,
+  ImportPage,
+  StorePage,
+  SupportPage,
+  SettingsPage,
+  JournalPage,
+} from "./pages-teacher";
+import { ExamPage, PracticeCatalog, PracticeExam } from "./pages-exam";
+import { LibraryCatalog, LibraryBookReader, LibraryStudio } from "./pages-library";
+import { OwnerPage } from "./pages-owner";
+import "./style.css";
+export const AccountContext = createContext<any>(null);
+export const useAccount = () => useContext(AccountContext);
+const nav = [
+  ["", "Boshqaruv", Grid2X2],
+  ["questions", "Savollar bazasi", BookOpen],
+  ["imports", "Import markazi", ArrowDownToLine],
+  ["cards", "Test kartalari", ClipboardList],
+  ["groups", "Guruhlar", FolderOpen],
+  ["students", "O‘quvchilar", Users],
+  ["journal", "Kurs jurnali", CalendarDays],
+  ["library", "Kutubxona", BookMarked],
+  ["analytics", "Analitika", BarChart3],
+  ["store", "Savollar do‘koni", Store],
+] as const;
+function Brand({ inverse = false }: { inverse?: boolean }) {
+  return (
+    <Link className={"brand " + (inverse ? "inverse" : "")} to="/">
+      <img className="brand-logo" src="/logo.png" alt="Bilim UZ" />
+      <span>
+        Bilim <b>UZ</b>
+        <small>O‘QITISH. BAHOLASH. RIVOJLANISH.</small>
+      </span>
+    </Link>
+  );
+}
+function StudioShell() {
+  const account = useData("/api/v2/auth/me");
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false),
+    [search, setSearch] = useState("");
+  useEffect(() => {
+    if (!open) return;
+    const previous = document.activeElement as HTMLElement | null;
+    document.querySelector<HTMLButtonElement>(".dock .mobile-only")?.focus();
+    return () => previous?.focus();
+  }, [open]);
+  if (account.loading) return <Busy />;
+  if (account.error) {
+    if ((account.error as any).status === 401)
+      return <Navigate to="/login" replace />;
+    return <ErrorBox error={account.error} retry={account.reload} />;
+  }
+  if (account.data?.user.scope !== "teacher")
+    return <Navigate to="/owner" replace />;
+  const current = nav.find(
+    (x) => location.pathname === "/studio" + (x[0] ? "/" + x[0] : ""),
+  );
+  const title =
+    current?.[1] ||
+    (location.pathname.endsWith("support") ? "Bilim UZ Support" : "Sozlamalar");
+  async function logout() {
+    await api("/api/v2/auth/logout", { method: "POST", data: {} });
+    navigate("/login");
+  }
+  return (
+    <AccountContext.Provider
+      value={{ ...account.data, reload: account.reload }}
+    >
+      <a className="skip-link" href="#main-content">
+        Asosiy mazmunga o‘tish
+      </a>
+      <div
+        className={"drawer-backdrop " + (open ? "visible" : "")}
+        onClick={() => setOpen(false)}
+      />
+      <aside
+        className={"dock " + (open ? "open" : "")}
+        aria-label="Asosiy navigatsiya"
+        onKeyDown={(e) => {
+          if (!open) return;
+          if (e.key === "Escape") {
+            setOpen(false);
+            return;
+          }
+          if (e.key === "Tab") {
+            const items = Array.from(
+              e.currentTarget.querySelectorAll<HTMLElement>(
+                "a[href],button:not([disabled])",
+              ),
+            );
+            const first = items[0],
+              last = items[items.length - 1];
+            if (e.shiftKey && document.activeElement === first) {
+              e.preventDefault();
+              last?.focus();
+            } else if (!e.shiftKey && document.activeElement === last) {
+              e.preventDefault();
+              first?.focus();
+            }
+          }
+        }}
+      >
+        <div className="dock-brand">
+          <Brand inverse />
+          <button
+            className="icon-btn mobile-only"
+            aria-label="Menyuni yopish"
+            onClick={() => setOpen(false)}
+          >
+            <X />
+          </button>
+        </div>
+        <Link
+          className="support-cta"
+          to="/studio/support"
+          onClick={() => setOpen(false)}
+        >
+          <LifeBuoy size={18} />
+          <span>
+            Bilim UZ Support<small>Yordam doim yoningizda</small>
+          </span>
+          <ChevronRight size={15} />
+        </Link>
+        <div className="nav-caption">ISH MAYDONI</div>
+        <nav>
+          {nav.map(([path, label, Icon]) => (
+            <NavLink
+              key={path}
+              to={"/studio" + (path ? "/" + path : "")}
+              end={!path}
+              onClick={() => setOpen(false)}
+            >
+              <Icon size={19} />
+              <span>{label}</span>
+              {path === "imports" && <small>UZ</small>}
+            </NavLink>
+          ))}
+        </nav>
+        <div className="dock-bottom">
+          <NavLink to="/studio/settings" onClick={() => setOpen(false)}>
+            <Settings size={19} />
+            Sozlamalar
+          </NavLink>
+          <button onClick={() => void logout()}>
+            <LogOut size={19} />
+            Chiqish
+          </button>
+          <div className="dock-profile">
+            <span className="avatar">{account.data.user.display_name[0]}</span>
+            <span>
+              <strong>{account.data.user.display_name}</strong>
+              <small>Shaxsiy workspace</small>
+            </span>
+            <ShieldCheck size={17} />
+          </div>
+        </div>
+      </aside>
+      <div className="studio">
+        <header className="topbar">
+          <div className="breadcrumb">
+            <button
+              className="icon-btn mobile-only"
+              aria-label="Menyuni ochish"
+              aria-expanded={open}
+              onClick={() => setOpen(!open)}
+            >
+              <Menu />
+            </button>
+            <span>Workspace</span>
+            <ChevronRight size={14} />
+            <strong>{title}</strong>
+          </div>
+          <div className="header-tools">
+            <form
+              className="global-search"
+              onSubmit={(e) => {
+                e.preventDefault();
+                navigate("/studio/questions?q=" + encodeURIComponent(search));
+              }}
+            >
+              <Search size={17} />
+              <input
+                aria-label="Savollarni qidirish"
+                placeholder="Savol qidirish…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+              <kbd>↵</kbd>
+            </form>
+            <Link
+              to="/studio/support"
+              className="icon-btn"
+              aria-label="Murojaatlar va javoblar"
+            >
+              <Bell size={20} />
+            </Link>
+            <Link to="/studio/settings" className="workspace-selector">
+              <span className="avatar mini">
+                {account.data.user.display_name[0]}
+              </span>
+              <span>{account.data.tenant.name}</span>
+              <ChevronDown size={14} />
+            </Link>
+          </div>
+        </header>
+        <main id="main-content" className="main-content">
+          <MaintenanceBanner />
+          <Outlet />
+        </main>
+        <footer className="app-footer">
+          <span>Bilim UZ · Powered by SysOne</span>
+          <span>
+            <ShieldCheck size={13} />
+            Ma’lumotlaringiz shaxsiy workspace ichida
+          </span>
+          <Link to="/privacy">Maxfiylik</Link>
+        </footer>
+      </div>
+    </AccountContext.Provider>
+  );
+}
+function MaintenanceBanner() {
+  const config = useData("/api/v2/config");
+  return config.data?.maintenance ? (
+    <div className="notice" role="status">
+      {config.data.maintenance}
+    </div>
+  ) : null;
+}
+function Home() {
+  const [slug, setSlug] = useState("");
+  const navigate = useNavigate();
+  return (
+    <div className="public-page">
+      <header className="public-header">
+        <Brand />
+        <nav>
+          <Link to="/library">Kutubxona</Link>
+          <Link to="/store">Savollar do‘koni</Link>
+          <Link className="btn secondary" to="/login">
+            Kirish <ArrowRight size={16} />
+          </Link>
+        </nav>
+      </header>
+      <main className="landing">
+        <div className="landing-copy">
+          <span className="landing-label">
+            <span />
+            O‘QITUVCHILAR UCHUN SHAXSIY PLATFORMA
+          </span>
+          <h1>
+            Bilimni baholang.
+            <br />
+            <em>Imkoniyatni oching.</em>
+          </h1>
+          <p>
+            Savollaringiz, guruhlaringiz va natijalaringiz — barchasi o‘zingizga
+            tegishli, bitta tartibli ish maydonida.
+          </p>
+          <div className="actions">
+            <Link to="/register" className="btn primary">
+              Workspace yaratish <ArrowRight size={18} />
+            </Link>
+            <Link to="/practice" className="btn secondary">
+              Ochiq testlar
+            </Link>
+            <Link to="/library" className="btn secondary">
+              Kutubxona
+            </Link>
+            <Link to="/store" className="btn secondary">
+              Savollarni ko‘rish
+            </Link>
+          </div>
+          <div className="landing-features">
+            <span>
+              <ShieldCheck />
+              Shaxsiy savollar bazasi
+            </span>
+            <span>
+              <ArrowDownToLine />
+              O‘zbekcha Excel import
+            </span>
+            <span>
+              <BarChart3 />
+              Aniq test natijalari
+            </span>
+          </div>
+        </div>
+        <div className="join-card">
+          <div className="join-icon">
+            <ClipboardList size={30} />
+          </div>
+          <span className="eyebrow">O‘QUVCHI UCHUN</span>
+          <h2>Testga tayyormisiz?</h2>
+          <p>O‘qituvchingiz bergan test kodini kiriting.</p>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const m = /^([A-Za-z]{2})[\s-]?(\d{5})$/.exec(slug.trim());
+              navigate("/t/" + encodeURIComponent(m ? `${m[1].toUpperCase()}-${m[2]}` : slug.trim()));
+            }}
+          >
+            <label className="field">
+              <span>Test kodi</span>
+              <input
+                value={slug}
+                onChange={(e) => setSlug(e.target.value)}
+                placeholder="Masalan: KP-48291"
+                required
+                maxLength={80}
+              />
+            </label>
+            <button className="btn primary full">
+              Testga kirish <ArrowRight size={18} />
+            </button>
+          </form>
+          <small>Test muddati va qoidalari kirishda ko‘rsatiladi.</small>
+        </div>
+      </main>
+      <footer className="public-footer">
+        <Brand />
+        <Link to="/privacy">Maxfiylik va foydalanish qoidalari</Link>
+        <span className="powered-by">Powered by <strong>SysOne</strong></span>
+        <Link to="/owner/login">Owner kirishi</Link>
+      </footer>
+    </div>
+  );
+}
+function Privacy() {
+  return (
+    <div className="policy-page">
+      <Brand />
+      <h1>Maxfiylik va foydalanish qoidalari</h1>
+      <p>
+        O‘qituvchining savollari, guruhlari, o‘quvchilari va natijalari uning
+        shaxsiy workspace doirasida saqlanadi. Ular boshqa o‘qituvchilarga
+        berilmaydi.
+      </p>
+      <h2>Qanday ma’lumot olinadi?</h2>
+      <p>
+        Ism, email va ish joyi. Telegram orqali faqat rozilik bo‘lsa
+        tasdiqlangan telefon olinadi. O‘quvchidan test uchun ism yoki o‘qituvchi
+        bergan kod, javoblar va taxminiy faol vaqt olinadi.
+      </p>
+      <h2>Natijalar va ochiq savollar</h2>
+      <p>
+        Natijalar o‘qituvchi siyosatiga binoan ko‘rsatiladi. Ochiq reytingda ism
+        qisqartiriladi. Savol faqat muallif roziligi va Owner tasdiqlashidan
+        so‘ng CC BY 4.0 litsenziyasi bilan do‘konda chiqadi. Do‘kondagi javoblar
+        ommaga ochiq bo‘ladi.
+      </p>
+      <h2>Saqlash va o‘chirish</h2>
+      <p>
+        Natijalar odatda 365 kun saqlanadi; platforma sozlamasi 30–730 kun.
+        Shifrlangan backup 7 kungacha qolishi mumkin. Sozlamalarda ma’lumot
+        eksporti va hisobni o‘chirish mavjud. Voyaga yetmagan o‘quvchi
+        ma’lumotini kiritishda o‘qituvchi zarur rozilik va huquqiy asosni
+        ta’minlaydi.
+      </p>
+      <h2>Xavfsizlik va yordam</h2>
+      <p>
+        Sessiya uchun zarur cookie ishlatiladi. Spamni oldini olish uchun
+        Cloudflare Turnstile, kirish uchun Telegram va xatlar uchun tasdiqlangan
+        email xizmati qo‘llanadi. Yordam uchun ilovadagi Bilim UZ Supportdan
+        foydalaning. Hech qanday reklama kuzatuvchisi qo‘llanmaydi.
+      </p>
+      <Link className="btn secondary" to="/">
+        Bosh sahifa
+      </Link>
+    </div>
+  );
+}
+function App() {
+  return (
+    <ToastProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/privacy" element={<Privacy />} />
+          <Route path="/login" element={<AuthPage mode="login" />} />
+          <Route path="/register" element={<AuthPage mode="register" />} />
+          <Route path="/forgot-password" element={<AuthPage mode="forgot" />} />
+          <Route path="/owner/login" element={<AuthPage mode="owner" />} />
+          <Route path="/verify-email" element={<TokenPage mode="verify" />} />
+          <Route path="/reset-password" element={<TokenPage mode="reset" />} />
+          <Route path="/t/:slug" element={<ExamPage />} />
+          <Route path="/practice" element={<PracticeCatalog />} />
+          <Route path="/practice/:slug" element={<PracticeExam />} />
+          <Route path="/library" element={<LibraryCatalog />} />
+          <Route path="/library/:id" element={<LibraryBookReader />} />
+          <Route path="/store" element={<StorePage publicView />} />
+          <Route path="/studio" element={<StudioShell />}>
+            <Route index element={<Dashboard />} />
+            <Route path="questions" element={<Questions />} />
+            <Route path="imports" element={<ImportPage />} />
+            <Route path="groups" element={<GroupsStudents />} />
+            <Route path="students" element={<GroupsStudents students />} />
+            <Route path="journal" element={<JournalPage />} />
+            <Route path="library" element={<LibraryStudio />} />
+            <Route path="cards" element={<Cards />} />
+            <Route path="analytics" element={<Analytics />} />
+            <Route path="store" element={<StorePage />} />
+            <Route path="support" element={<SupportPage />} />
+            <Route path="settings" element={<SettingsPage />} />
+          </Route>
+          <Route path="/owner/*" element={<OwnerPage />} />
+          <Route path="/admin/*" element={<Navigate to="/studio" replace />} />
+          <Route
+            path="*"
+            element={
+              <div className="policy-page">
+                <h1>Sahifa topilmadi</h1>
+                <Link to="/">Bosh sahifaga qaytish</Link>
+              </div>
+            }
+          />
+        </Routes>
+      </BrowserRouter>
+    </ToastProvider>
+  );
+}
+createRoot(document.getElementById("root")!).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>,
+);

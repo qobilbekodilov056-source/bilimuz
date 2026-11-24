@@ -1,0 +1,57 @@
+{
+  "name": "sysone-testlab",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.16"
+  },
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "dev:api": "wrangler dev --port 8787",
+    "typecheck": "tsc --noEmit && tsc -p apps/web/tsconfig.json --noEmit",
+    "lint": "eslint apps packages tests scripts --max-warnings 0",
+    "build": "vite build && npm run build:api",
+    "build:api": "esbuild apps/api/index.ts --bundle --format=esm --platform=browser --outfile=dist/worker.js --sourcemap",
+    "test": "npm run build:api && vitest run",
+    "test:e2e": "playwright test",
+    "test:legacy": "python -m pytest -q legacy/v1/test_e2e.py",
+    "test:load": "node scripts/load-test.mjs",
+    "check:release": "node scripts/release-gate.mjs",
+    "db:local": "wrangler d1 migrations apply DB --local",
+    "deploy:staging": "npm run build && wrangler deploy --env staging",
+    "deploy:production": "npm run check:release && npm run build && wrangler deploy --env production"
+  },
+  "dependencies": {
+    "fast-xml-parser": "^5.3.0",
+    "fflate": "^0.8.2",
+    "hono": "4.13.19",
+    "jose": "^6.1.0",
+    "lucide-react": "^0.468.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-router-dom": "^7.9.0",
+    "zod": "^4.1.0"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.11.0",
+    "@cloudflare/workers-types": "5.20261121.1",
+    "@playwright/test": "^1.56.0",
+    "@tailwindcss/vite": "^4.1.0",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^5.1.0",
+    "esbuild": "^0.28.2",
+    "eslint": "^9.39.0",
+    "jsonc-parser": "^3.3.1",
+    "miniflare": "5.20261119.0-beta",
+    "prettier": "^3.10.1",
+    "tailwindcss": "^4.1.0",
+    "typescript": "^5.9.0",
+    "typescript-eslint": "^8.46.0",
+    "vite": "^7.2.0",
+    "vitest": "^4.0.0",
+    "wrangler": "4.166.0"
+  }
+}

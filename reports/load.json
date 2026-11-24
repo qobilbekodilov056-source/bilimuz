@@ -1,0 +1,18 @@
+{
+  "environment": "local workerd + SQLite-backed D1 + R2 emulation; external auth mocked; cloud CPU/network NOT measured",
+  "at": "2026-11-21T06:03:50.183Z",
+  "scenario": "100 concurrent students x 20 questions; batch autosave + refresh + concurrent duplicate finish + IDOR",
+  "concurrent_students": 100,
+  "questions_each": 20,
+  "requests": 700,
+  "p50_ms": 334.47,
+  "p95_ms": 794.79,
+  "max_ms": 892.83,
+  "errors": [],
+  "error_rate": 0,
+  "lost_answers": 0,
+  "duplicate_results": 0,
+  "cross_tenant_leaks": 0,
+  "target_p95_ms": 800,
+  "passed": true
+}
