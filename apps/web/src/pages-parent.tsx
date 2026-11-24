@@ -44,10 +44,17 @@ export function ParentPortal() {
 
   return (
     <div className="exam-join parent-page">
-      <Link to="/" className="back-link">
-        <ArrowLeft size={17} />
-        Bosh sahifa
-      </Link>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+        <Link to="/" className="back-link" style={{ margin: 0 }}>
+          <ArrowLeft size={17} />
+          Bosh sahifa
+        </Link>
+        {activeCode && (
+          <Link to={"/vazifalar/" + encodeURIComponent(activeCode)} className="btn secondary tiny">
+            Uyga vazifalar <ArrowRight size={14} />
+          </Link>
+        )}
+      </div>
 
       <section className="panel" style={{ marginBottom: 18 }}>
         <span className="eyebrow">OTA-ONALAR VA O‘QUVCHILAR KABINETI</span>

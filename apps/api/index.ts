@@ -7,6 +7,8 @@ import { teacher } from "./teacher";
 import { owner } from "./owner";
 import { exam, finalizeExpired } from "./exam";
 import { libraryPublic } from "./library";
+import { gamesPublic } from "./games";
+import { assignmentsPublic } from "./assignments";
 import {
   fail,
   first,
@@ -36,11 +38,11 @@ app.use("*", async (c, next) => {
   c.header("X-Request-ID", requestId);
   c.header("X-Content-Type-Options", "nosniff");
   c.header("Referrer-Policy", "no-referrer");
-  c.header("X-Frame-Options", "DENY");
+  c.header("X-Frame-Options", "SAMEORIGIN");
   c.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
   c.header(
     "Content-Security-Policy",
-    "default-src 'self'; script-src 'self' https://challenges.cloudflare.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://challenges.cloudflare.com https://cloudflareinsights.com; frame-src https://challenges.cloudflare.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
+    "default-src 'self'; script-src 'self' https://challenges.cloudflare.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://challenges.cloudflare.com https://cloudflareinsights.com; frame-src 'self' https: https://challenges.cloudflare.com; object-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'",
   );
   if (c.env.ENVIRONMENT !== "development")
     c.header(
@@ -122,7 +124,14 @@ app.get("/api/v2/config", async (c) => {
     support_email: s.support_email,
     support_telegram: s.support_telegram,
     maintenance: s.maintenance,
-    store_enabled: s.store_enabled,
+    store_enabled: s.store_enabled !== false,
+    games_enabled: s.games_enabled !== false,
+    library_enabled: s.library_enabled !== false,
+    assignments_enabled: s.assignments_enabled !== false,
+    journal_enabled: s.journal_enabled !== false,
+    parent_enabled: s.parent_enabled !== false,
+    practice_enabled: s.practice_enabled !== false,
+    apk_enabled: s.apk_enabled !== false,
   });
 });
 app.get("/api/v2/templates/:file", async (c) => {
@@ -151,6 +160,8 @@ app.route("/api/v2/teacher", teacher);
 app.route("/api/v2/owner", owner);
 app.route("/api/v2/public", exam);
 app.route("/api/v2/library", libraryPublic);
+app.route("/api/v2/games", gamesPublic);
+app.route("/api/v2/public/assignments", assignmentsPublic);
 app.get("/api/v2/app/bilimuz.apk", async (c) => {
   const obj = await c.env.FILES.get("app/BilimUZ.apk");
   if (!obj) fail("Android ilova hali yuklanmagan. Tez orada qo‘shiladi.", 404);
@@ -162,7 +173,7 @@ app.get("/api/v2/app/bilimuz.apk", async (c) => {
 });
 app.get("/api/v2/media/*", async (c) => {
   const key = decodeURIComponent(c.req.path.replace(/^\/api\/v2\/media\//, ""));
-  if (!key.startsWith("qimg/") || key.includes("..")) {
+  if ((!key.startsWith("qimg/") && !key.startsWith("hw/") && !key.startsWith("libpdf/")) || key.includes("..")) {
     fail("Rasm topilmadi", 404);
   }
   const obj = await c.env.FILES.get(key);

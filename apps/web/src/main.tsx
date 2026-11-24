@@ -51,9 +51,38 @@ import {
 } from "./pages-teacher";
 import { ExamPage, PracticeCatalog, PracticeExam } from "./pages-exam";
 import { LibraryCatalog, LibraryBookReader, LibraryStudio } from "./pages-library";
+import { GamesCatalogPage, GamePlayPage } from "./pages-games";
+import { StudentAssignmentsPage, TeacherAssignmentsPage } from "./pages-assignments";
+import { StudentCabinetPage } from "./pages-student-hub";
 import { ParentPortal } from "./pages-parent";
 import { OwnerPage } from "./pages-owner";
 import "./style.css";
+const DEFAULT_FLAGS = {
+  store_enabled: true,
+  games_enabled: true,
+  library_enabled: true,
+  assignments_enabled: true,
+  journal_enabled: true,
+  parent_enabled: true,
+  practice_enabled: true,
+  apk_enabled: true,
+};
+export const ConfigContext = createContext<typeof DEFAULT_FLAGS>(DEFAULT_FLAGS);
+export const useConfig = () => useContext(ConfigContext);
+
+function FeatureGate({ enabled, title, children }: { enabled: boolean; title: string; children: any }) {
+  if (enabled) return children;
+  return (
+    <div className="policy-page" style={{ textAlign: "center", padding: "64px 20px" }}>
+      <h1>{title} vaqtincha yopiq</h1>
+      <p className="muted">Ushbu bo‘lim platforma administratori tomonidan vaqtincha o‘chirib qo‘yilgan.</p>
+      <Link to="/" className="btn primary" style={{ marginTop: 14, display: "inline-flex" }}>
+        Bosh sahifaga qaytish
+      </Link>
+    </div>
+  );
+}
+
 export const AccountContext = createContext<any>(null);
 export const useAccount = () => useContext(AccountContext);
 const nav = [
@@ -64,6 +93,7 @@ const nav = [
   ["groups", "Guruhlar", FolderOpen],
   ["students", "O‘quvchilar", Users],
   ["journal", "Kurs jurnali", CalendarDays],
+  ["assignments", "Vazifalar", ClipboardList],
   ["library", "Kutubxona", BookMarked],
   ["analytics", "Analitika", BarChart3],
   ["store", "Savollar do‘koni", Store],
@@ -80,6 +110,7 @@ function Brand({ inverse = false }: { inverse?: boolean }) {
   );
 }
 function StudioShell() {
+  const cfg = useConfig();
   const account = useData("/api/v2/auth/me");
   const location = useLocation();
   const navigate = useNavigate();
@@ -276,7 +307,8 @@ function MaintenanceBanner() {
 }
 function Home() {
   const [slug, setSlug] = useState("");
-  const [entryMode, setEntryMode] = useState<"test" | "parent">("test");
+  const cfg = useConfig();
+  const [entryMode, setEntryMode] = useState<"test" | "hw" | "parent">("test");
   const me = useData("/api/v2/auth/me");
   const loggedUser = me.data?.user;
   const cabinetPath = loggedUser?.scope === "owner" ? "/owner" : "/studio";
@@ -286,9 +318,12 @@ function Home() {
       <header className="public-header">
         <Brand />
         <nav>
-          <Link to="/parent">Ota-ona kabineti</Link>
-          <Link to="/library">Kutubxona</Link>
-          <Link to="/store">Savollar do‘koni</Link>
+          {cfg.parent_enabled && <Link to="/parent">Ota-ona kabineti</Link>}
+          <Link to="/student">O‘quvchi kabineti</Link>
+          {cfg.assignments_enabled && <Link to="/vazifalar">Vazifalar</Link>}
+          {cfg.games_enabled && <Link to="/games">O‘yinlar</Link>}
+          {cfg.library_enabled && <Link to="/library">Kutubxona</Link>}
+          {cfg.store_enabled && <Link to="/store">Savollar do‘koni</Link>}
           {loggedUser ? (
             <Link className="btn primary" to={cabinetPath}>
               Kabinetim <ArrowRight size={16} />
@@ -325,18 +360,29 @@ function Home() {
                 Workspace yaratish <ArrowRight size={18} />
               </Link>
             )}
-            <Link to="/practice" className="btn secondary">
-              Ochiq testlar
-            </Link>
-            <Link to="/library" className="btn secondary">
-              Kutubxona
-            </Link>
-            <Link to="/store" className="btn secondary">
-              Savollarni ko‘rish
-            </Link>
+            {cfg.practice_enabled && (
+              <Link to="/practice" className="btn secondary">
+                Ochiq testlar
+              </Link>
+            )}
+            {cfg.library_enabled && (
+              <Link to="/library" className="btn secondary">
+                Kutubxona
+              </Link>
+            )}
+            {cfg.games_enabled && (
+              <Link to="/games" className="btn secondary">
+                O‘yinlar
+              </Link>
+            )}
+            {cfg.store_enabled && (
+              <Link to="/store" className="btn secondary">
+                Savollarni ko‘rish
+              </Link>
+            )}
 
           </div>
-          {!/BilimUZApp/i.test(navigator.userAgent) && (
+          {cfg.apk_enabled && !/BilimUZApp/i.test(navigator.userAgent) && (
           <a
             href="/api/v2/app/bilimuz.apk"
             download="BilimUZ.apk"
@@ -393,6 +439,16 @@ function Home() {
             </button>
             <button
               type="button"
+              className={entryMode === "hw" ? "btn primary tiny" : "btn secondary tiny"}
+              onClick={() => {
+                setEntryMode("hw");
+                setSlug("");
+              }}
+            >
+              O‘quvchi kabineti
+            </button>
+            <button
+              type="button"
               className={entryMode === "parent" ? "btn primary tiny" : "btn secondary tiny"}
               onClick={() => {
                 setEntryMode("parent");
@@ -405,9 +461,9 @@ function Home() {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              if (entryMode === "parent") {
+              if (entryMode === "parent" || entryMode === "hw") {
                 const cleaned = slug.trim().toUpperCase().replace(/[\s-]+/g, "");
-                navigate("/parent/" + encodeURIComponent(cleaned));
+                navigate((entryMode === "hw" ? "/student/" : "/parent/") + encodeURIComponent(cleaned));
               } else {
                 const m = /^([A-Za-z]{2})[\s-]?(\d{5})$/.exec(slug.trim());
                 navigate("/t/" + encodeURIComponent(m ? `${m[1].toUpperCase()}-${m[2]}` : slug.trim()));
@@ -415,17 +471,17 @@ function Home() {
             }}
           >
             <label className="field">
-              <span>{entryMode === "parent" ? "O‘quvchi kodi" : "Test kodi"}</span>
+              <span>{entryMode === "test" ? "Test kodi" : "O‘quvchi kodi"}</span>
               <input
                 value={slug}
                 onChange={(e) => setSlug(e.target.value)}
-                placeholder={entryMode === "parent" ? "Masalan: K48291" : "Masalan: KP-48291"}
+                placeholder={entryMode === "test" ? "Masalan: KP-48291" : "Masalan: K48291"}
                 required
                 maxLength={80}
               />
             </label>
             <button className="btn primary full">
-              {entryMode === "parent" ? "Natijalarni ko‘rish" : "Testga kirish"}{" "}
+              {entryMode === "parent" ? "Natijalarni ko‘rish" : entryMode === "hw" ? "Kabinetga kirish" : "Testga kirish"}{" "}
               <ArrowRight size={18} />
             </button>
           </form>
@@ -490,9 +546,18 @@ function Privacy() {
   );
 }
 function App() {
+  const [cfg, setCfg] = useState(DEFAULT_FLAGS);
+  useEffect(() => {
+    fetch("/api/v2/config")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d) setCfg({ ...DEFAULT_FLAGS, ...d });
+      })
+      .catch(() => {});
+  }, []);
   return (
     <ToastProvider>
-      <BrowserRouter>
+      <ConfigContext.Provider value={cfg}><BrowserRouter>
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/privacy" element={<Privacy />} />
@@ -503,13 +568,19 @@ function App() {
           <Route path="/verify-email" element={<TokenPage mode="verify" />} />
           <Route path="/reset-password" element={<TokenPage mode="reset" />} />
           <Route path="/t/:slug" element={<ExamPage />} />
-          <Route path="/practice" element={<PracticeCatalog />} />
-          <Route path="/practice/:slug" element={<PracticeExam />} />
-          <Route path="/library" element={<LibraryCatalog />} />
-          <Route path="/library/:id" element={<LibraryBookReader />} />
-          <Route path="/parent" element={<ParentPortal />} />
-          <Route path="/parent/:code" element={<ParentPortal />} />
-          <Route path="/store" element={<StorePage publicView />} />
+          <Route path="/practice" element={<FeatureGate enabled={cfg.practice_enabled} title="Ochiq testlar"><PracticeCatalog /></FeatureGate>} />
+          <Route path="/practice/:slug" element={<FeatureGate enabled={cfg.practice_enabled} title="Ochiq testlar"><PracticeExam /></FeatureGate>} />
+          <Route path="/library" element={<FeatureGate enabled={cfg.library_enabled} title="Kutubxona"><LibraryCatalog /></FeatureGate>} />
+          <Route path="/library/:id" element={<FeatureGate enabled={cfg.library_enabled} title="Kutubxona"><LibraryBookReader /></FeatureGate>} />
+          <Route path="/games" element={<FeatureGate enabled={cfg.games_enabled} title="O‘yinlar markazi"><GamesCatalogPage /></FeatureGate>} />
+          <Route path="/games/:id" element={<FeatureGate enabled={cfg.games_enabled} title="O‘yinlar markazi"><GamePlayPage /></FeatureGate>} />
+          <Route path="/parent" element={<FeatureGate enabled={cfg.parent_enabled} title="Ota-ona kabineti"><ParentPortal /></FeatureGate>} />
+          <Route path="/parent/:code" element={<FeatureGate enabled={cfg.parent_enabled} title="Ota-ona kabineti"><ParentPortal /></FeatureGate>} />
+          <Route path="/vazifalar" element={<FeatureGate enabled={cfg.assignments_enabled} title="Vazifalar"><StudentAssignmentsPage /></FeatureGate>} />
+          <Route path="/student" element={<StudentCabinetPage />} />
+          <Route path="/student/:code" element={<StudentCabinetPage />} />
+          <Route path="/vazifalar/:code" element={<FeatureGate enabled={cfg.assignments_enabled} title="Vazifalar"><StudentAssignmentsPage /></FeatureGate>} />
+          <Route path="/store" element={<FeatureGate enabled={cfg.store_enabled} title="Savollar do‘koni"><StorePage publicView /></FeatureGate>} />
           <Route path="/studio" element={<StudioShell />}>
             <Route index element={<Dashboard />} />
             <Route path="questions" element={<Questions />} />
@@ -517,6 +588,7 @@ function App() {
             <Route path="groups" element={<GroupsStudents />} />
             <Route path="students" element={<GroupsStudents students />} />
             <Route path="journal" element={<JournalPage />} />
+            <Route path="assignments" element={<TeacherAssignmentsPage />} />
             <Route path="library" element={<LibraryStudio />} />
             <Route path="cards" element={<Cards />} />
             <Route path="analytics" element={<Analytics />} />
@@ -536,7 +608,7 @@ function App() {
             }
           />
         </Routes>
-      </BrowserRouter>
+      </BrowserRouter></ConfigContext.Provider>
     </ToastProvider>
   );
 }

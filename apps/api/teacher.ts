@@ -30,6 +30,7 @@ import { authenticate, csrf } from "./auth";
 import { insertQuestion, questionRecord, questionView } from "./questions";
 import { toCsv } from "./spreadsheet";
 import { libraryTeacher } from "./library";
+import { assignmentsTeacher } from "./assignments";
 import { finalizeExpired, analytics, csvExport, xlsxExport } from "./exam";
 import { imports, purgeTenantImportFiles } from "./imports";
 export const teacher = new Hono<AppEnv>();
@@ -45,6 +46,7 @@ teacher.use("*", async (c, next) => {
   await next();
 });
 teacher.route("/library", libraryTeacher);
+teacher.route("/assignments", assignmentsTeacher);
 teacher.get("/overview", async (c) => {
   const tid = c.get("principal").tenantId!;
   await finalizeExpired(c.env, tid);
@@ -417,12 +419,13 @@ teacher.post("/students", async (c) => {
   const code = await generateStudentCode(c.env.DB);
   await stmt(
     c.env.DB,
-    "INSERT INTO students(id,tenant_id,group_id,student_code,name,created_at) VALUES(?,?,?,?,?,?)",
+    "INSERT INTO students(id,tenant_id,group_id,student_code,name,note,created_at) VALUES(?,?,?,?,?,?,?)",
     sid,
     tid,
     d.group_id,
     code,
     d.name,
+    d.note || "",
     now(),
   ).run();
   return c.json({ id: sid, student_code: code }, 201);
@@ -433,10 +436,11 @@ teacher.put("/students/:id", async (c) => {
   if (d.group_id) await scoped(c, "groups", d.group_id);
   await stmt(
     c.env.DB,
-    "UPDATE students SET group_id=?,student_code=?,name=? WHERE tenant_id=? AND id=?",
+    "UPDATE students SET group_id=?,student_code=?,name=?,note=? WHERE tenant_id=? AND id=?",
     d.group_id,
     d.student_code,
     d.name,
+    d.note || "",
     c.get("principal").tenantId,
     c.req.param("id"),
   ).run();
@@ -883,7 +887,7 @@ async function buildJournal(db: D1Database, tid: string, groupId: string, month:
 
   const studs = await rows(
     db,
-    "SELECT id, name, student_code FROM students WHERE tenant_id=? AND group_id=? AND status='active' ORDER BY name",
+    "SELECT id, name, student_code, COALESCE(note,'') note FROM students WHERE tenant_id=? AND group_id=? AND status='active' ORDER BY name",
     tid,
     gid,
   );
@@ -1056,6 +1060,7 @@ async function buildJournal(db: D1Database, tid: string, groupId: string, month:
       id: s.id,
       name: s.name,
       student_code: s.student_code,
+      note: s.note || "",
       attendance,
       present_count: present,
       late_count: late,
@@ -1188,12 +1193,13 @@ teacher.get("/journal/export.csv", async (c) => {
   const groupId = c.req.query("group_id") || "";
   const j = await buildJournal(c.env.DB, tid, groupId, month);
   const sym: Record<string, string> = { present: "+", late: "K", absent: "-", excused: "S" };
-  const header = ["O'quvchi", "Kod", ...j.lesson_dates, "Keldi", "Kechikdi", "Kelmadi", "Sababli", "Davomat (%)", "Testlar", "O'tgan", "Oylik bilim (%)"];
+  const header = ["O'quvchi", "Kod", "Tavsif / Sinf", ...j.lesson_dates, "Keldi", "Kechikdi", "Kelmadi", "Sababli", "Davomat (%)", "Testlar", "O'tgan", "Oylik bilim (%)"];
   const data = [
     header,
     ...j.students.map((s: any) => [
       s.name,
       s.student_code,
+      s.note || "",
       ...j.lesson_dates.map((d: string) => sym[s.attendance[d]] || ""),
       s.present_count,
       s.late_count,
@@ -1280,6 +1286,137 @@ teacher.get("/submissions", async (c) =>
     ),
   }),
 );
+teacher.post("/store/copy-bulk", async (c) => {
+  if (!(await settings(c.env)).store_enabled)
+    fail("Savollar do‘koni vaqtincha yopiq", 503);
+  const d = await body(
+    c,
+    z.object({ ids: z.array(z.string().min(1)).min(1).max(100) }).strict(),
+  );
+  let copied = 0;
+  let skipped = 0;
+  for (const sid of d.ids) {
+    const r = await first(
+      c.env.DB,
+      "SELECT public_content_json FROM store_items WHERE id=? AND status='approved'",
+      sid,
+    );
+    if (!r) {
+      skipped++;
+      continue;
+    }
+    try {
+      const content = JSON.parse(r.public_content_json);
+      const q = questionSchema.parse(content.question);
+      await insertQuestion(c, q, {
+        store_item_id: sid,
+        license: content.license,
+        attribution: content.attribution,
+        source_version: content.source_version,
+      });
+      copied++;
+    } catch {
+      skipped++;
+    }
+  }
+  return c.json({ ok: true, copied, skipped }, 201);
+});
+
+teacher.post("/market-cards/:slug/copy", async (c) => {
+  const tid = c.get("principal").tenantId!;
+  const slug = c.req.param("slug");
+  const card = await first(
+    c.env.DB,
+    "SELECT * FROM cards WHERE slug=? AND market_status='approved' AND status='active' AND published_version>0",
+    slug,
+  );
+  if (!card) fail("Market test kartasi topilmadi", 404);
+
+  const qRows = await rows(
+    c.env.DB,
+    `SELECT v.content_json, q.fingerprint
+     FROM card_questions cq
+     JOIN question_versions v ON v.tenant_id=cq.tenant_id AND v.id=cq.question_version_id
+     LEFT JOIN questions q ON q.tenant_id=v.tenant_id AND q.id=v.question_id
+     WHERE cq.tenant_id=? AND cq.card_id=? AND cq.card_version=?
+     ORDER BY cq.position ASC`,
+    card.tenant_id,
+    card.id,
+    card.published_version,
+  );
+  if (!qRows.length) fail("Ushbu test kartasida savollar topilmadi", 422);
+
+  const copiedIds: string[] = [];
+  let newlyAdded = 0;
+  for (const row of qRows) {
+    const q = questionSchema.parse(JSON.parse(row.content_json));
+    if (row.fingerprint) {
+      const existing = await first(
+        c.env.DB,
+        "SELECT id FROM questions WHERE tenant_id=? AND fingerprint=? AND archived=0",
+        tid,
+        row.fingerprint,
+      );
+      if (existing) {
+        copiedIds.push(existing.id);
+        continue;
+      }
+    }
+    try {
+      const newQid = await insertQuestion(c, q, {
+        market_card_slug: card.slug,
+      });
+      copiedIds.push(newQid);
+      newlyAdded++;
+    } catch {
+      // Fallback: find by title in current tenant if fingerprint collided
+      const existing = await first(
+        c.env.DB,
+        "SELECT id FROM questions WHERE tenant_id=? AND title=? AND archived=0 LIMIT 1",
+        tid,
+        q.title,
+      );
+      if (existing) copiedIds.push(existing.id);
+    }
+  }
+  if (!copiedIds.length) fail("Savollarni nusxalab bo‘lmadi", 422);
+
+  const orig = JSON.parse(card.settings_json || "{}");
+  const newSettings = {
+    ...orig,
+    title: (String(orig.title || card.title) + " (Market)").slice(0, 130),
+    mode: "manual",
+    selected_ids: copiedIds,
+    question_count: copiedIds.length,
+    access_mode: "open",
+  };
+  const newCid = id();
+  const newSlug = await generateCardCode(c.env.DB);
+  const ts = now();
+  await stmt(
+    c.env.DB,
+    "INSERT INTO cards(id,tenant_id,slug,title,settings_json,pin_hash,group_id,created_at,updated_at) VALUES(?,?,?,?,?,NULL,NULL,?,?)",
+    newCid,
+    tid,
+    newSlug,
+    newSettings.title,
+    json(newSettings),
+    ts,
+    ts,
+  ).run();
+
+  return c.json(
+    {
+      ok: true,
+      id: newCid,
+      slug: newSlug,
+      questions_total: copiedIds.length,
+      questions_added: newlyAdded,
+    },
+    201,
+  );
+});
+
 teacher.post("/store/:id/copy", async (c) => {
   if (!(await settings(c.env)).store_enabled)
     fail("Savollar do‘koni vaqtincha yopiq", 503);

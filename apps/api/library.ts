@@ -334,6 +334,10 @@ libraryTeacher.put("/:id", async (c) => {
 libraryTeacher.delete("/:id", async (c) => {
   const tid = c.get("principal").tenantId!;
   const bid = c.req.param("id");
+  const cur = await first(c.env.DB, "SELECT pdf_key FROM library_books WHERE tenant_id=? AND id=?", tid, bid);
+  if (cur?.pdf_key && String(cur.pdf_key).startsWith(`libpdf/${tid}/`)) {
+    try { await c.env.FILES.delete(cur.pdf_key); } catch {}
+  }
   await c.env.DB.batch([
     stmt(c.env.DB, "DELETE FROM library_chapters WHERE tenant_id=? AND book_id=?", tid, bid),
     stmt(c.env.DB, "DELETE FROM library_books WHERE tenant_id=? AND id=?", tid, bid),
@@ -412,4 +416,188 @@ libraryTeacher.delete("/:id/chapters/:cid", async (c) => {
     stmt(c.env.DB, "UPDATE library_books SET updated_at=? WHERE tenant_id=? AND id=?", now(), tid, bid),
   ]);
   return c.json({ ok: true });
+});
+
+
+libraryTeacher.post("/copy/:bookId", async (c) => {
+  const tid = c.get("principal").tenantId!;
+  const srcId = c.req.param("bookId");
+  const book = await first(
+    c.env.DB,
+    "SELECT * FROM library_books WHERE id=? AND published=1 AND moderation_status='approved'",
+    srcId,
+  );
+  if (!book) fail("Kitob topilmadi", 404);
+
+  const chapters = await rows(
+    c.env.DB,
+    "SELECT position, title, summary, content FROM library_chapters WHERE book_id=? ORDER BY position ASC",
+    srcId,
+  );
+
+  const newBookId = id();
+  const ts = now();
+  const batches = [
+    stmt(
+      c.env.DB,
+      "INSERT INTO library_books(id,tenant_id,title,subject,summary,tags,author_name,linked_card_slug,published,moderation_status,views_count,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,0,'pending',0,?,?)",
+      newBookId,
+      tid,
+      (String(book.title) + " (nusxa)").slice(0, 160),
+      book.subject,
+      book.summary || "",
+      book.tags || "",
+      book.author_name || "",
+      "",
+      ts,
+      ts,
+    ),
+  ];
+
+  for (const ch of chapters) {
+    batches.push(
+      stmt(
+        c.env.DB,
+        "INSERT INTO library_chapters(id,tenant_id,book_id,position,title,summary,content,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
+        id(),
+        tid,
+        newBookId,
+        ch.position,
+        ch.title,
+        ch.summary || "",
+        ch.content,
+        ts,
+        ts,
+      ),
+    );
+  }
+
+  for (let i = 0; i < batches.length; i += 50) {
+    await c.env.DB.batch(batches.slice(i, i + 50));
+  }
+
+  return c.json({ ok: true, id: newBookId, chapters: chapters.length }, 201);
+});
+
+
+const importDocxSchema = z.object({
+  title: z.string().trim().min(2).max(160),
+  subject: z.string().trim().min(2).max(80),
+  summary: z.string().trim().max(1000).optional().default(""),
+  tags: z.string().trim().max(240).optional().default(""),
+  author_name: z.string().trim().max(120).optional().default(""),
+  linked_card_slug: z.string().trim().max(80).optional().default(""),
+  published: z.boolean().optional().default(true),
+  chapters: z
+    .array(
+      z.object({
+        title: z.string().trim().min(1).max(180),
+        summary: z.string().trim().max(500).optional().default(""),
+        content: z.string().trim().min(1).max(60000),
+      }),
+    )
+    .min(1)
+    .max(80),
+});
+
+libraryTeacher.post("/import-docx", async (c) => {
+  const tid = c.get("principal").tenantId!;
+  const d = await body(c, importDocxSchema);
+  const bid = id();
+  const ts = now();
+  const modStatus = d.published ? "pending" : "pending";
+  const batches = [
+    stmt(
+      c.env.DB,
+      "INSERT INTO library_books(id,tenant_id,title,subject,summary,tags,author_name,linked_card_slug,published,moderation_status,views_count,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,0,?,?)",
+      bid,
+      tid,
+      d.title,
+      d.subject,
+      d.summary,
+      d.tags,
+      d.author_name,
+      d.linked_card_slug,
+      d.published ? 1 : 0,
+      modStatus,
+      ts,
+      ts,
+    ),
+  ];
+  d.chapters.forEach((ch, idx) => {
+    batches.push(
+      stmt(
+        c.env.DB,
+        "INSERT INTO library_chapters(id,tenant_id,book_id,position,title,summary,content,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
+        id(),
+        tid,
+        bid,
+        idx + 1,
+        ch.title,
+        ch.summary || "",
+        ch.content,
+        ts,
+        ts,
+      ),
+    );
+  });
+  for (let i = 0; i < batches.length; i += 50) {
+    await c.env.DB.batch(batches.slice(i, i + 50));
+  }
+  return c.json({ ok: true, id: bid, chapters: d.chapters.length }, 201);
+});
+
+libraryTeacher.post("/import-pdf", async (c) => {
+  const tid = c.get("principal").tenantId!;
+  const form = await c.req.formData().catch(() => null);
+  const file = form?.get("file");
+  if (!file || typeof file === "string") fail("PDF fayl tanlanmadi", 400);
+  const f = file as File;
+  const maxBytes = 15 * 1024 * 1024; // 15 MB
+  if (f.size <= 0) fail("Bo‘sh PDF fayl yuklab bo‘lmaydi", 400);
+  if (f.size > maxBytes) fail("PDF fayl hajmi 15 MB dan oshmasligi kerak", 413);
+  if (!/\.pdf$/i.test(f.name || "") && f.type !== "application/pdf") {
+    fail("Faqat .pdf formatdagi fayllarni yuklash mumkin", 400);
+  }
+
+  const title = String(form?.get("title") || f.name.replace(/\.pdf$/i, "")).trim().slice(0, 160);
+  const subject = String(form?.get("subject") || "Umumiy").trim().slice(0, 80);
+  const summary = String(form?.get("summary") || "").trim().slice(0, 1000);
+  const tags = String(form?.get("tags") || "").trim().slice(0, 240);
+  const authorName = String(form?.get("author_name") || "").trim().slice(0, 120);
+  const linkedSlug = String(form?.get("linked_card_slug") || "").trim().slice(0, 80);
+  const published = String(form?.get("published") || "true") !== "false";
+
+  if (title.length < 2) fail("Kitob nomini kiriting", 400);
+
+  const bid = id();
+  const key = `libpdf/${tid}/${bid}.pdf`;
+  await c.env.FILES.put(key, await f.arrayBuffer(), {
+    httpMetadata: {
+      contentType: "application/pdf",
+      contentDisposition: "inline",
+    },
+  });
+
+  const ts = now();
+  await stmt(
+    c.env.DB,
+    "INSERT INTO library_books(id,tenant_id,title,subject,summary,tags,author_name,linked_card_slug,published,moderation_status,pdf_key,pdf_name,pdf_size,views_count,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,'pending',?,?,?,0,?,?)",
+    bid,
+    tid,
+    title,
+    subject,
+    summary,
+    tags,
+    authorName,
+    linkedSlug,
+    published ? 1 : 0,
+    key,
+    (f.name || "kitob.pdf").slice(0, 180),
+    f.size,
+    ts,
+    ts,
+  ).run();
+
+  return c.json({ ok: true, id: bid, pdf_key: key }, 201);
 });

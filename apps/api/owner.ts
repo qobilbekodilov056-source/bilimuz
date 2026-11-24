@@ -18,6 +18,7 @@ import {
 import { authenticate, csrf } from "./auth";
 import { questionSchema } from "../../packages/shared/schema";
 import { createBackup } from "./backup";
+import { gamesOwner } from "./games";
 export const owner = new Hono<AppEnv>();
 owner.use("*", async (c, next) => {
   const p = await authenticate(c);
@@ -26,6 +27,7 @@ owner.use("*", async (c, next) => {
   await rate(c, "owner", 120, 60, p.userId);
   await next();
 });
+owner.route("/games", gamesOwner);
 owner.get("/overview", async (c) => {
   const stats = await first(
     c.env.DB,
@@ -134,6 +136,115 @@ owner.get("/moderation", async (c) => {
       content_json: undefined,
     })),
   });
+});
+owner.post("/moderation/bulk", async (c) => {
+  const d = await body(
+    c,
+    z
+      .object({
+        ids: z.array(z.string().min(1)).min(1).max(200),
+        decision: z.enum([
+          "approved",
+          "rejected",
+          "changes_requested",
+          "revoked",
+        ]),
+        reason: z.string().trim().max(2000).optional().default(""),
+      })
+      .strict(),
+  );
+  const reason =
+    d.reason.length >= 3
+      ? d.reason
+      : d.decision === "approved"
+        ? "Owner tomonidan ommaviy tasdiqlandi va nashr qilindi"
+        : d.decision === "rejected"
+          ? "Owner tomonidan ommaviy rad etildi"
+          : "Owner tomonidan ommaviy holat yangilandi";
+  const ts = now();
+  const uid = c.get("principal").userId;
+  let processed = 0;
+  let skipped = 0;
+  const batches: any[] = [];
+
+  for (const sid of d.ids) {
+    const s = await first(
+      c.env.DB,
+      "SELECT * FROM store_submissions WHERE id=?",
+      sid,
+    );
+    if (!s) {
+      skipped++;
+      continue;
+    }
+    if (d.decision === "approved") {
+      if (!s.consent_at || s.license !== "CC-BY-4.0") {
+        skipped++;
+        continue;
+      }
+      const q = questionSchema.parse(JSON.parse(s.content_json));
+      const publicContent = {
+        question: q,
+        license: s.license,
+        attribution: s.attribution,
+        source_version: s.source_version,
+      };
+      batches.push(
+        stmt(
+          c.env.DB,
+          "INSERT INTO store_items(id,submission_id,publication_version,public_content_json,category,level,fingerprint,status,published_at) VALUES(?,?,1,?,?,?,?,'approved',?) ON CONFLICT(submission_id) DO UPDATE SET status='approved',published_at=excluded.published_at",
+          id(),
+          s.id,
+          json(publicContent),
+          q.category,
+          q.level,
+          s.fingerprint,
+          ts,
+        ),
+      );
+    } else {
+      batches.push(
+        stmt(
+          c.env.DB,
+          "UPDATE store_items SET status='revoked' WHERE submission_id=?",
+          s.id,
+        ),
+      );
+    }
+    batches.push(
+      stmt(
+        c.env.DB,
+        "UPDATE store_submissions SET moderation_status=?,reviewer_id=?,reviewed_at=?,reason=? WHERE id=?",
+        d.decision,
+        uid,
+        ts,
+        reason,
+        s.id,
+      ),
+    );
+    processed++;
+  }
+
+  if (processed > 0) {
+    batches.push(
+      stmt(
+        c.env.DB,
+        "INSERT INTO owner_audit_logs VALUES(?,?,?,?,?,?,?)",
+        id(),
+        uid,
+        "store_bulk_" + d.decision,
+        "submission",
+        `bulk:${processed}`,
+        reason,
+        ts,
+      ),
+    );
+    // D1 batch chunking (max ~80 statements per batch for safety)
+    for (let i = 0; i < batches.length; i += 80) {
+      await c.env.DB.batch(batches.slice(i, i + 80));
+    }
+  }
+  return c.json({ ok: true, processed, skipped });
 });
 owner.post("/moderation/:id", async (c) => {
   const d = await body(
@@ -368,8 +479,15 @@ owner.put("/settings", async (c) => {
           .regex(/^(https:\/\/t\.me\/\+?[-A-Za-z0-9_]{5,64})?$/),
         maintenance: z.string().max(500),
         retention_days: z.number().int().min(30).max(730),
-        store_enabled: z.boolean(),
-        reason: z.string().min(10).max(1000),
+        store_enabled: z.boolean().default(true),
+        games_enabled: z.boolean().default(true),
+        library_enabled: z.boolean().default(true),
+        assignments_enabled: z.boolean().default(true),
+        journal_enabled: z.boolean().default(true),
+        parent_enabled: z.boolean().default(true),
+        practice_enabled: z.boolean().default(true),
+        apk_enabled: z.boolean().default(true),
+        reason: z.string().min(5).max(1000),
       })
       .strict(),
   );

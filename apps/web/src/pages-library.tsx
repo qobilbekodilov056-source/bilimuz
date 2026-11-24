@@ -11,6 +11,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { api } from "./api";
+import { parseBookFileToChapters, type ParsedChapter } from "./docx-parser";
 import {
   Busy,
   Empty,
@@ -37,29 +38,102 @@ const SUBJECT_SUGGESTIONS = [
   "Kimyo",
 ];
 
+function renderInline(text: string) {
+  const parts: any[] = [];
+  const re = /(\x60[^\x60]+\x60|\*\*[^*]+\*\*)/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  let k = 0;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) parts.push(text.slice(last, m.index));
+    const tok = m[0];
+    if (tok.startsWith("**") && tok.endsWith("**")) {
+      parts.push(<strong key={"b-" + k++}>{tok.slice(2, -2)}</strong>);
+    } else if (tok.startsWith("`") && tok.endsWith("`")) {
+      parts.push(<code className="lib-kbd" key={"k-" + k++}>{tok.slice(1, -1)}</code>);
+    }
+    last = m.index + tok.length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts;
+}
+
+function QuizRevealCard({ question, answer }: { question: string; answer: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className={"lib-quiz-card" + (open ? " is-open" : "")}>
+      <div className="lib-quiz-q">
+        <span className="lib-quiz-badge">🎯 O‘zingizni sinang</span>
+        <p>{renderInline(question)}</p>
+      </div>
+      <button
+        type="button"
+        className="btn secondary tiny"
+        onClick={() => setOpen((v) => !v)}
+      >
+        {open ? "Javobni yashirish" : "Javobni ko‘rish"}
+      </button>
+      {open && <div className="lib-quiz-a">{renderInline(answer)}</div>}
+    </div>
+  );
+}
+
 function renderBookBlocks(text: string) {
   const lines = String(text || "").split("\n");
   const blocks: any[] = [];
   let inCode = false;
   let codeBuf: string[] = [];
   let listBuf: string[] = [];
+  let tableBuf: string[][] = [];
 
   const flushList = (key: string) => {
     if (!listBuf.length) return;
     blocks.push(
       <ul className="lib-list" key={key}>
         {listBuf.map((item, i) => (
-          <li key={i}>{item}</li>
+          <li key={i}>{renderInline(item)}</li>
         ))}
       </ul>,
     );
     listBuf = [];
   };
 
+  const flushTable = (key: string) => {
+    if (!tableBuf.length) return;
+    const rows = tableBuf.filter((r) => !r.every((c) => /^[-:]+$/.test(c.trim())));
+    if (rows.length) {
+      const [head, ...body] = rows;
+      blocks.push(
+        <div className="lib-table-wrap" key={key}>
+          <table className="lib-table">
+            <thead>
+              <tr>
+                {head.map((c, i) => (
+                  <th key={i}>{renderInline(c.trim())}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {body.map((r, ri) => (
+                <tr key={ri}>
+                  {r.map((c, ci) => (
+                    <td key={ci}>{renderInline(c.trim())}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>,
+      );
+    }
+    tableBuf = [];
+  };
+
   lines.forEach((raw, idx) => {
     const line = raw.trimEnd();
     if (line.trim().startsWith("```")) {
       flushList("l-" + idx);
+      flushTable("t-" + idx);
       if (inCode) {
         blocks.push(
           <pre className="code-block" key={"c-" + idx}>
@@ -80,25 +154,54 @@ function renderBookBlocks(text: string) {
     const trimmed = line.trim();
     if (!trimmed) {
       flushList("l-" + idx);
+      flushTable("t-" + idx);
       return;
     }
-    if (trimmed.startsWith("### ")) {
+    if (trimmed.startsWith("|") && trimmed.endsWith("|")) {
       flushList("l-" + idx);
-      blocks.push(<h3 key={"h3-" + idx}>{trimmed.slice(4)}</h3>);
+      const cells = trimmed.slice(1, -1).split("|");
+      tableBuf.push(cells);
+      return;
+    }
+    flushTable("t-" + idx);
+
+    if (trimmed.startsWith("??? ") && trimmed.includes("||")) {
+      flushList("l-" + idx);
+      const body = trimmed.slice(4);
+      const sep = body.indexOf("||");
+      const q = body.slice(0, sep).trim();
+      const a = body.slice(sep + 2).trim();
+      blocks.push(<QuizRevealCard key={"qz-" + idx} question={q} answer={a} />);
+    } else if (trimmed.startsWith("> ")) {
+      flushList("l-" + idx);
+      const content = trimmed.slice(2).trim();
+      let tone = "info";
+      if (content.startsWith("💡")) tone = "tip";
+      else if (content.startsWith("⚠️") || content.startsWith("🚨")) tone = "warn";
+      else if (content.startsWith("🧠")) tone = "fact";
+      blocks.push(
+        <div className={"lib-callout is-" + tone} key={"q-" + idx}>
+          {renderInline(content)}
+        </div>,
+      );
+    } else if (trimmed.startsWith("### ")) {
+      flushList("l-" + idx);
+      blocks.push(<h3 key={"h3-" + idx}>{renderInline(trimmed.slice(4))}</h3>);
     } else if (trimmed.startsWith("## ")) {
       flushList("l-" + idx);
-      blocks.push(<h2 key={"h2-" + idx}>{trimmed.slice(3)}</h2>);
+      blocks.push(<h2 key={"h2-" + idx}>{renderInline(trimmed.slice(3))}</h2>);
     } else if (trimmed.startsWith("# ")) {
       flushList("l-" + idx);
-      blocks.push(<h2 key={"h1-" + idx}>{trimmed.slice(2)}</h2>);
+      blocks.push(<h2 key={"h1-" + idx}>{renderInline(trimmed.slice(2))}</h2>);
     } else if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
       listBuf.push(trimmed.slice(2));
     } else {
       flushList("l-" + idx);
-      blocks.push(<p key={"p-" + idx}>{trimmed}</p>);
+      blocks.push(<p key={"p-" + idx}>{renderInline(trimmed)}</p>);
     }
   });
   flushList("l-end");
+  flushTable("t-end");
   if (inCode && codeBuf.length) {
     blocks.push(
       <pre className="code-block" key="c-end">
@@ -236,7 +339,28 @@ export function LibraryBookReader() {
   const { id = "" } = useParams();
   const [params, setParams] = useSearchParams();
   const [fontSize, setFontSize] = useState(16);
+  const [copying, setCopying] = useState(false);
+  const toast = useToast();
   const data = useData("/api/v2/library/" + encodeURIComponent(id));
+  async function copyBookToStudio() {
+    if (!book) return;
+    setCopying(true);
+    try {
+      const res = await api("/api/v2/teacher/library/copy/" + encodeURIComponent(book.id), {
+        method: "POST",
+        data: {},
+      });
+      toast(`Kitob va ${res.chapters} ta bob «Studio → Kutubxona» bo‘limiga nusxalandi!`);
+    } catch (e: any) {
+      if (e?.status === 401 || e?.status === 403) {
+        toast("Kitobni kabinetga qo‘shish uchun avval o‘qituvchi sifatida tizimga kiring.");
+      } else {
+        toast(e?.message || "Nusxalashda xatolik yuz berdi");
+      }
+    } finally {
+      setCopying(false);
+    }
+  }
 
   const book = data.data?.book;
   const chapters: any[] = data.data?.chapters || [];
@@ -289,6 +413,14 @@ export function LibraryBookReader() {
           </button>
           <button
             type="button"
+            className="btn primary tiny"
+            disabled={copying}
+            onClick={() => void copyBookToStudio()}
+          >
+            <Plus size={14} /> {copying ? "Yuklanmoqda…" : "Kabinetimga qo‘shish"}
+          </button>
+          <button
+            type="button"
             className="btn secondary tiny"
             onClick={() => window.print()}
           >
@@ -334,7 +466,50 @@ export function LibraryBookReader() {
         </aside>
 
         <article className="panel lib-content" style={{ fontSize }}>
-          {!activeChapter ? (
+          {book.pdf_key ? (
+            <div className="lib-pdf-reader">
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+                <div>
+                  <span className="eyebrow">PDF KITOB · {book.subject.toUpperCase()}</span>
+                  <h1 style={{ margin: "4px 0 0" }}>{book.title}</h1>
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <a
+                    href={"/api/v2/media/" + book.pdf_key}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="btn secondary tiny"
+                  >
+                    To‘liq ekranda ochish
+                  </a>
+                  <a
+                    href={"/api/v2/media/" + book.pdf_key}
+                    download={book.pdf_name || "kitob.pdf"}
+                    className="btn primary tiny"
+                  >
+                    PDF yuklab olish
+                  </a>
+                </div>
+              </div>
+              {book.summary && <div className="lib-ch-summary">{book.summary}</div>}
+              <iframe
+                src={"/api/v2/media/" + book.pdf_key}
+                title={book.title}
+                className="lib-pdf-frame"
+              />
+              {book.linked_card_slug && (
+                <div className="lib-nav-footer">
+                  <span />
+                  <Link
+                    to={"/t/" + encodeURIComponent(book.linked_card_slug)}
+                    className="btn primary"
+                  >
+                    Testni topshirish <ArrowRight size={16} />
+                  </Link>
+                </div>
+              )}
+            </div>
+          ) : !activeChapter ? (
             <Empty
               title="Kitob hali to‘ldirilmagan"
               text="O‘qituvchi ushbu kitobga hali boblar qo‘shmagan."
@@ -406,6 +581,7 @@ export function LibraryStudio() {
   const base = "/api/v2/teacher/library";
   const list = useData(base);
   const [editBook, setEditBook] = useState<any>(null);
+  const [showImport, setShowImport] = useState(false);
   const [chaptersBookId, setChaptersBookId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -467,6 +643,7 @@ export function LibraryStudio() {
             <Link className="btn secondary" to="/library" target="_blank">
               Ochiq kutubxonani ko‘rish
             </Link>
+            <button type="button" className="btn secondary" onClick={() => setShowImport(true)}>📄 Word / PDF dan yuklash</button>
             <button
               type="button"
               className="btn primary"
@@ -656,6 +833,16 @@ export function LibraryStudio() {
         </Modal>
       )}
 
+      {showImport && (
+        <ImportBookModal
+          close={() => setShowImport(false)}
+          onImported={(msg) => {
+            setShowImport(false);
+            list.reload();
+            toast(msg);
+          }}
+        />
+      )}
       {chaptersBookId && (
         <ChaptersModal
           bookId={chaptersBookId}
@@ -840,6 +1027,167 @@ function ChaptersModal({ bookId, onClose }: { bookId: string; onClose: () => voi
           )}
         </div>
       )}
+    </Modal>
+  );
+}
+
+
+function ImportBookModal({
+  close,
+  onImported,
+}: {
+  close: () => void;
+  onImported: (msg: string) => void;
+}) {
+  const [file, setFile] = useState<File | null>(null);
+  const [isPdf, setIsPdf] = useState(false);
+  const [parsedChapters, setParsedChapters] = useState<ParsedChapter[]>([]);
+  const [title, setTitle] = useState("");
+  const [subject, setSubject] = useState("Kompyuter savodxonligi");
+  const [summary, setSummary] = useState("");
+  const [tags, setTags] = useState("");
+  const [authorName, setAuthorName] = useState("");
+  const [published, setPublished] = useState(true);
+  const [parsing, setParsing] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+
+  async function onPick(f: File | null) {
+    setFile(f);
+    setError(null);
+    setParsedChapters([]);
+    if (!f) return;
+    if (!title) setTitle(f.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim());
+    if (/\.pdf$/i.test(f.name) || f.type === "application/pdf") {
+      setIsPdf(true);
+      if (f.size > 15 * 1024 * 1024) {
+        setError(new Error("PDF fayl hajmi 15 MB dan oshmasligi kerak."));
+      }
+      return;
+    }
+    setIsPdf(false);
+    setParsing(true);
+    try {
+      const chs = await parseBookFileToChapters(f);
+      setParsedChapters(chs);
+    } catch (err) {
+      setError(err);
+    } finally {
+      setParsing(false);
+    }
+  }
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    if (!file) return;
+    setBusy(true);
+    setError(null);
+    try {
+      if (isPdf) {
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("title", title.trim());
+        fd.append("subject", subject.trim());
+        fd.append("summary", summary.trim());
+        fd.append("tags", tags.trim());
+        fd.append("author_name", authorName.trim());
+        fd.append("published", published ? "true" : "false");
+        await api("/api/v2/teacher/library/import-pdf", {
+          method: "POST",
+          form: fd,
+        });
+        onImported("PDF kitob muvaffaqiyatli yuklandi!");
+      } else {
+        if (!parsedChapters.length) throw new Error("Avval fayldan boblar ajratilishi kerak");
+        const res = await api("/api/v2/teacher/library/import-docx", {
+          method: "POST",
+          data: {
+            title: title.trim(),
+            subject: subject.trim(),
+            summary: summary.trim(),
+            tags: tags.trim(),
+            author_name: authorName.trim(),
+            published,
+            chapters: parsedChapters,
+          },
+        });
+        onImported(`Kitob va ${res.chapters} ta bob avtomatik yaratildi!`);
+      }
+    } catch (err) {
+      setError(err);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal title="Word (.docx) yoki PDF dan kitob yaratish" close={close}>
+      {!!error && <ErrorBox error={error} />}
+      <form onSubmit={submit}>
+        <Field label="Fayl tanlang (.docx Word, .pdf max 15 MB, .txt, .md)">
+          <label className="hw-upload-box">
+            <span>
+              {parsing
+                ? "Fayl tahlil qilinmoqda…"
+                : file
+                  ? `Tanlandi: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`
+                  : "Word (.docx) yoki PDF fayl tanlash uchun bosing"}
+            </span>
+            <input
+              type="file"
+              accept=".docx,.pdf,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              onChange={(e) => void onPick(e.target.files?.[0] || null)}
+              style={{ display: "none" }}
+            />
+          </label>
+        </Field>
+
+        {!isPdf && parsedChapters.length > 0 && (
+          <div className="lib-import-preview">
+            <strong>✅ {parsedChapters.length} ta bob avtomatik ajratildi:</strong>
+            <ul>
+              {parsedChapters.slice(0, 6).map((ch, i) => (
+                <li key={i}>{i + 1}. {ch.title}</li>
+              ))}
+              {parsedChapters.length > 6 && <li>… yana {parsedChapters.length - 6} ta bob</li>}
+            </ul>
+          </div>
+        )}
+
+        {isPdf && file && file.size <= 15 * 1024 * 1024 && (
+          <div className="lib-import-preview">
+            <strong>📕 PDF kitob rejimi:</strong> Fayl asl dizayni, rasmlari va formulalari bilan ichki PDF kitob o‘quvchida ochiladi.
+          </div>
+        )}
+
+        <Field label="Kitob nomi">
+          <input value={title} onChange={(e) => setTitle(e.target.value)} required minLength={2} maxLength={160} />
+        </Field>
+        <Field label="Fan / kategoriya">
+          <input list="lib-subjects" value={subject} onChange={(e) => setSubject(e.target.value)} required minLength={2} maxLength={80} />
+          <datalist id="lib-subjects">
+            {SUBJECT_SUGGESTIONS.map((x) => <option key={x} value={x} />)}
+          </datalist>
+        </Field>
+        <Field label="Qisqa tavsif (ixtiyoriy)">
+          <textarea rows={2} value={summary} onChange={(e) => setSummary(e.target.value)} maxLength={1000} />
+        </Field>
+        <div className="hw-two-col">
+          <Field label="Muallif (ixtiyoriy)">
+            <input value={authorName} onChange={(e) => setAuthorName(e.target.value)} maxLength={120} />
+          </Field>
+          <Field label="Teglar (ixtiyoriy)">
+            <input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="excel, informatika" maxLength={240} />
+          </Field>
+        </div>
+        <label className="mod-check-inline" style={{ marginBottom: 14 }}>
+          <input type="checkbox" checked={published} onChange={(e) => setPublished(e.target.checked)} />
+          <span>Ommaviy kutubxonaga yuborish (Owner tasdiqlagach chiqadi)</span>
+        </label>
+        <button className="btn primary full" disabled={busy || parsing || !file}>
+          {busy ? "Yuklanmoqda…" : isPdf ? "PDF kitobni saqlash" : "Boblarni kitob qilib saqlash"}
+        </button>
+      </form>
     </Modal>
   );
 }

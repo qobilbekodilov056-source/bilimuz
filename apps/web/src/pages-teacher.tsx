@@ -147,10 +147,6 @@ export function Dashboard() {
               <UploadCloud size={16} />
               Import qilish
             </Link>
-            <Link className="btn primary" to="/studio/cards?new=1">
-              <Plus size={17} />
-              Yangi test
-            </Link>
           </>
         }
       />
@@ -633,6 +629,7 @@ export function Questions() {
     [selected, setSelected] = useState<string[]>([]),
     [error, setError] = useState<unknown>(null),
     [busy, setBusy] = useState(false);
+  const [showOfflinePdf, setShowOfflinePdf] = useState(false);
   const debounced = useDebounce(search);
   const result = useData(
     `${base}/questions?q=${encodeURIComponent(debounced)}&category=${encodeURIComponent(category)}&level=${level}&offset=${offset}`,
@@ -709,6 +706,13 @@ export function Questions() {
         description="Har bir savol shaxsiy. Ulashish — faqat sizning tanlovingiz."
         actions={
           <>
+            <button
+              type="button"
+              className="btn secondary"
+              onClick={() => setShowOfflinePdf(true)}
+            >
+              📄 Oflayn PDF test
+            </button>
             <Link to="/studio/imports" className="btn secondary">
               <UploadCloud size={16} />
               Import
@@ -917,6 +921,9 @@ export function Questions() {
           />
         )}
       </div>
+      {showOfflinePdf && (
+        <OfflinePdfModal close={() => setShowOfflinePdf(false)} />
+      )}
       {editor && (
         <QuestionEditor
           question={editor.id ? editor : undefined}
@@ -990,6 +997,7 @@ export function GroupsStudents({ students = false }: { students?: boolean }) {
               name: f.name,
               student_code: f.student_code,
               group_id: f.group_id || null,
+              note: f.note || "",
             }
           : { name: f.name, description: f.description },
       });
@@ -1089,8 +1097,11 @@ export function GroupsStudents({ students = false }: { students?: boolean }) {
                 {result.data.items.map((r: any) => (
                   <tr key={r.id}>
                     <td>
-                      <strong>{r.name}</strong>
-                      {r.status === "archived" && <Pill>Arxiv</Pill>}
+                      <div className="student-name-cell">
+                        <strong>{r.name}</strong>
+                        {students && r.note && <span className="student-note-tag">{r.note}</span>}
+                        {r.status === "archived" && <Pill>Arxiv</Pill>}
+                      </div>
                     </td>
                     <td>{students ? r.student_code : r.description || "—"}</td>
                     <td>
@@ -1182,6 +1193,14 @@ export function GroupsStudents({ students = false }: { students?: boolean }) {
                       </option>
                     ))}
                   </select>
+                </Field>
+                <Field label="Tavsif (sinf yoki izoh)">
+                  <input
+                    name="note"
+                    defaultValue={edit.note || ""}
+                    placeholder="Masalan: 8-A sinf, 10-B sinf…"
+                    maxLength={200}
+                  />
                 </Field>
               </>
             ) : (
@@ -2647,7 +2666,10 @@ function CardAnalytics({ id }: { id: string }) {
                     onClick={() => setOpenAttemptId(a.id)}
                   >
                     <td>
-                      <strong>{a.student_name}</strong>
+                      <div className="student-name-cell">
+                        <strong>{a.student_name}</strong>
+                        {a.student_note && <span className="student-note-tag">{a.student_note}</span>}
+                      </div>
                       <small>
                         {a.student_code || "Guest"} · {date(a.started_at)}
                       </small>
@@ -2856,6 +2878,39 @@ export function StorePage({ publicView = false }: { publicView?: boolean }) {
       setBusy(false);
     }
   }
+  async function copyAllOnPage() {
+    const ids = (result.data?.items || []).map((x: any) => x.id);
+    if (!ids.length) return;
+    if (!confirm(`Sahifadagi ${ids.length} ta savolning barchasini shaxsiy bazangizga yuklab olasizmi?`)) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api(base + "/store/copy-bulk", {
+        method: "POST",
+        data: { ids },
+      });
+      toast(`${res.copied} ta savol bazangizga yuklandi${res.skipped ? ` (${res.skipped} tasi mavjud)` : ""}`);
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function copyMarketCard(card: any) {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api(base + "/market-cards/" + encodeURIComponent(card.slug) + "/copy", {
+        method: "POST",
+        data: {},
+      });
+      toast(`Test kartasi (${res.questions_total} ta savol) «Test kartalari» bo‘limiga yuklandi!`);
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
   async function report(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setBusy(true);
@@ -2946,6 +3001,16 @@ export function StorePage({ publicView = false }: { publicView?: boolean }) {
                     >
                       Testni yechish
                     </Link>
+                    {!publicView && (
+                      <button
+                        type="button"
+                        className="btn secondary"
+                        disabled={busy}
+                        onClick={() => void copyMarketCard(c)}
+                      >
+                        Kabinetga yuklash
+                      </button>
+                    )}
                     <button
                       type="button"
                       className="btn secondary"
@@ -3729,7 +3794,10 @@ export function JournalPage() {
                             >
                               <td className="muted">{idx + 1}</td>
                               <td>
-                                <strong>{s.name}</strong>
+                                <div className="student-name-cell">
+                                  <strong>{s.name}</strong>
+                                  {s.note && <span className="student-note-tag">{s.note}</span>}
+                                </div>
                                 <small className="muted" style={{ display: "block" }}>
                                   {s.student_code}
                                 </small>
@@ -3794,7 +3862,7 @@ export function JournalPage() {
                                 <td colSpan={6 + monthTests.length}>
                                   <div className="j-detail-box">
                                     <div className="j-detail-head">
-                                      <strong>{s.name} — oylik tafsilotlar</strong>
+                                      <strong>{s.name}{s.note ? ` (${s.note})` : ""} — oylik tafsilotlar</strong>
                                       <div className="journal-legend">
                                         <span className="att-pill present">Keldi: {s.present_count}</span>
                                         <span className="att-pill late">Kechikdi: {s.late_count}</span>
@@ -3893,7 +3961,10 @@ export function JournalPage() {
                     {j.students.map((s: any) => (
                       <tr key={s.id}>
                         <td className="sticky-col">
-                          <strong>{s.name}</strong>
+                          <div className="student-name-cell">
+                            <strong>{s.name}</strong>
+                            {s.note && <span className="student-note-tag">{s.note}</span>}
+                          </div>
                           <small className="muted" style={{ display: "block" }}>
                             {s.student_code}
                           </small>
@@ -3953,5 +4024,220 @@ export function JournalPage() {
         </>
       )}
     </>
+  );
+}
+
+
+function OfflinePdfModal({ close }: { close: () => void }) {
+  const [title, setTitle] = useState("Bilim UZ — Nazorat testi");
+  const [category, setCategory] = useState("");
+  const [count, setCount] = useState(15);
+  const [variants, setVariants] = useState(2);
+  const [shuffleOptions, setShuffleOptions] = useState(true);
+  const [includeKey, setIncludeKey] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  const cats = useData(base + "/questions?limit=100");
+
+  const allCats: string[] = Array.from(
+    new Set(((cats.data?.items || []) as any[]).map((q) => String(q.category || "")).filter(Boolean)),
+  ).sort();
+
+  function esc(str: string) {
+    return String(str || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function shuffle<T>(arr: T[]): T[] {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  async function generatePrintSheet(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const qs: any[] = [];
+      let off = 0;
+      while (qs.length < 300) {
+        const res = await api(
+          `${base}/questions?limit=100&offset=${off}&category=${encodeURIComponent(category)}`,
+        );
+        const batch: any[] = res.items || [];
+        qs.push(...batch);
+        if (batch.length < 100) break;
+        off += 100;
+      }
+      if (!qs.length) throw new Error("Tanlangan fan bo‘yicha savollar topilmadi.");
+      const take = Math.min(Math.max(1, count), qs.length);
+      const letters = ["A", "B", "C", "D", "E", "F", "G", "H"];
+
+      const variantSheets: { num: number; html: string; keys: string[] }[] = [];
+      for (let v = 1; v <= variants; v++) {
+        const picked = shuffle(qs).slice(0, take);
+        const keys: string[] = [];
+        const itemsHtml = picked
+          .map((q, idx) => {
+            const rawOpts: any[] = q.options || [];
+            const corrSet = new Set<string>(q.correct || []);
+            const opts =
+              shuffleOptions && q.kind !== "truefalse" ? shuffle(rawOpts) : rawOpts;
+            const mappedCorrect: string[] = [];
+            const optsHtml = opts
+              .map((o, oi) => {
+                const L = letters[oi] || String(oi + 1);
+                if (corrSet.has(o.id)) mappedCorrect.push(L);
+                return `<div class="opt"><b>${L})</b> ${esc(o.text)}</div>`;
+              })
+              .join("");
+            keys.push(mappedCorrect.join(", ") || "—");
+            return `<div class="q-item">
+              <div class="q-title"><b>${idx + 1}.</b> ${esc(q.title)}</div>
+              ${q.code ? `<pre class="q-code">${esc(q.code)}</pre>` : ""}
+              <div class="q-opts">${optsHtml}</div>
+            </div>`;
+          })
+          .join("");
+
+        variantSheets.push({
+          num: v,
+          keys,
+          html: `<section class="sheet ${v > 1 ? "page-break" : ""}">
+            <div class="sheet-head">
+              <div>
+                <div class="brand">Bilim UZ · Powered by SysOne</div>
+                <h1>${esc(title)}</h1>
+                <div class="sub">${category ? esc(category) + " · " : ""}${take} ta savol</div>
+              </div>
+              <div class="variant-box">${v}-VARIANT</div>
+            </div>
+            <div class="student-line">
+              <span>F.I.Sh.: ______________________________________</span>
+              <span>Sinf / Guruh: _______________</span>
+              <span>Sana: ___.___.20___</span>
+            </div>
+            <div class="q-grid">${itemsHtml}</div>
+          </section>`,
+        });
+      }
+
+      let keyPageHtml = "";
+      if (includeKey) {
+        const rowsHtml = Array.from({ length: take }, (_, i) => {
+          const cols = variantSheets.map((vs) => `<td><b>${esc(vs.keys[i])}</b></td>`).join("");
+          return `<tr><td>${i + 1}</td>${cols}</tr>`;
+        }).join("");
+        const headCols = variantSheets.map((vs) => `<th>${vs.num}-variant</th>`).join("");
+        keyPageHtml = `<section class="sheet page-break">
+          <div class="sheet-head">
+            <div>
+              <div class="brand">O‘QITUVCHI UCHUN · MAXFIY</div>
+              <h1>Javoblar kaliti — ${esc(title)}</h1>
+            </div>
+            <div class="variant-box">KALIT</div>
+          </div>
+          <table class="key-table">
+            <thead><tr><th>#</th>${headCols}</tr></thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+        </section>`;
+      }
+
+      const html = `<!doctype html><html lang="uz"><head><meta charset="utf-8" />
+        <title>${esc(title)} — Bilim UZ</title>
+        <style>
+          @page { size: A4 portrait; margin: 12mm; }
+          * { box-sizing: border-box; }
+          body { margin: 0; font-family: Inter, Arial, sans-serif; color: #111827; font-size: 11px; line-height: 1.42; background: #fff; }
+          .toolbar { position: sticky; top: 0; background: #162d3d; color: #fff; padding: 10px 18px; display: flex; justify-content: space-between; align-items: center; }
+          .toolbar button { background: #10b981; color: #fff; border: 0; padding: 8px 16px; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 13px; }
+          .sheet { max-width: 190mm; margin: 14px auto; padding: 4px; }
+          .page-break { page-break-before: always; break-before: page; }
+          .sheet-head { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #162d3d; padding-bottom: 8px; margin-bottom: 10px; }
+          .brand { font-size: 10px; font-weight: 700; color: #0c8066; text-transform: uppercase; letter-spacing: 0.6px; }
+          h1 { margin: 2px 0; font-size: 16px; color: #162d3d; }
+          .sub { font-size: 11px; color: #475569; }
+          .variant-box { border: 2px solid #162d3d; padding: 6px 14px; border-radius: 8px; font-size: 14px; font-weight: 800; color: #162d3d; }
+          .student-line { display: flex; justify-content: space-between; gap: 10px; font-size: 11px; margin-bottom: 12px; padding: 6px 8px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; }
+          .q-grid { column-count: 2; column-gap: 16px; }
+          .q-item { break-inside: avoid; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px dotted #cbd5e1; }
+          .q-title { margin-bottom: 4px; font-size: 11.2px; }
+          .q-code { background: #f1f5f9; padding: 5px 7px; border-radius: 5px; font-size: 10px; overflow-x: auto; margin: 4px 0; }
+          .q-opts { padding-left: 8px; }
+          .opt { margin-bottom: 2px; }
+          .key-table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 12px; }
+          .key-table th, .key-table td { border: 1px solid #cbd5e1; padding: 6px 10px; text-align: center; }
+          .key-table th { background: #162d3d; color: #fff; }
+          .key-table tr:nth-child(even) { background: #f8fafc; }
+          @media print { .toolbar { display: none !important; } .sheet { margin: 0; } }
+        </style></head><body>
+        <div class="toolbar">
+          <span><b>Bilim UZ — Oflayn A4 Test Varaqasi</b> (${variants} ta variant, ${take} ta savol)</span>
+          <button onclick="window.print()">🖨️ Chop etish / PDF saqlash</button>
+        </div>
+        ${variantSheets.map((x) => x.html).join("")}
+        ${keyPageHtml}
+      </body></html>`;
+
+      const win = window.open("", "_blank");
+      if (!win) throw new Error("Brauzer yangi oynani blokladi — popup ga ruxsat bering.");
+      win.document.open();
+      win.document.write(html);
+      win.document.close();
+      close();
+    } catch (err) {
+      setError(err);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal title="📄 Oflayn imtihon uchun PDF test varaqasi" close={close}>
+      {!!error && <ErrorBox error={error} />}
+      <form onSubmit={generatePrintSheet}>
+        <Field label="Imtihon sarlavhasi">
+          <input value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={120} />
+        </Field>
+        <Field label="Fan / kategoriya">
+          <select value={category} onChange={(e) => setCategory(e.target.value)}>
+            <option value="">Barcha fanlar</option>
+            {allCats.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </Field>
+        <div className="hw-two-col">
+          <Field label="Har bir variantda savollar soni">
+            <input type="number" min={5} max={100} value={count} onChange={(e) => setCount(Number(e.target.value))} required />
+          </Field>
+          <Field label="Variantlar soni">
+            <select value={variants} onChange={(e) => setVariants(Number(e.target.value))}>
+              <option value={1}>1 ta variant</option>
+              <option value={2}>2 ta variant (1-, 2-variant)</option>
+              <option value={3}>3 ta variant</option>
+              <option value={4}>4 ta variant</option>
+            </select>
+          </Field>
+        </div>
+        <label className="mod-check-inline" style={{ marginBottom: 8 }}>
+          <input type="checkbox" checked={shuffleOptions} onChange={(e) => setShuffleOptions(e.target.checked)} />
+          <span>Javob variantlarini ham (A, B, C, D) aralashtirish</span>
+        </label>
+        <label className="mod-check-inline" style={{ marginBottom: 14 }}>
+          <input type="checkbox" checked={includeKey} onChange={(e) => setIncludeKey(e.target.checked)} />
+          <span>Oxirgi sahifada O‘qituvchi javoblar kalitini chiqarish</span>
+        </label>
+        <button className="btn primary full" disabled={busy}>
+          {busy ? "Tayyorlanmoqda…" : "🖨️ A4 Test varaqasini ochish (PDF)"}
+        </button>
+      </form>
+    </Modal>
   );
 }

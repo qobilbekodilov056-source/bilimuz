@@ -15,9 +15,11 @@ import {
   LogOut,
   Settings,
   ShieldCheck,
+  Gamepad2,
   Users,
 } from "lucide-react";
 import { api } from "./api";
+import { OwnerGamesPage } from "./pages-games";
 import {
   Busy,
   Empty,
@@ -34,6 +36,7 @@ const sections = [
   ["", "Umumiy ko‘rinish", Activity],
   ["teachers", "O‘qituvchilar", Users],
   ["moderation", "Store moderatsiyasi", ClipboardCheck],
+  ["games", "O‘yinlar", Gamepad2],
   ["reports", "Kontent shikoyatlari", ShieldCheck],
   ["support", "Support inbox", LifeBuoy],
   ["operations", "Operatsiyalar", Archive],
@@ -89,6 +92,8 @@ export function OwnerPage() {
           <OwnerTeachers />
         ) : section === "moderation" ? (
           <Moderation />
+        ) : section === "games" ? (
+          <OwnerGamesPage />
         ) : section === "reports" ? (
           <OwnerReports />
         ) : section === "support" ? (
@@ -282,8 +287,14 @@ function Moderation() {
     [decision, setDecision] = useState("approved"),
     [reason, setReason] = useState(""),
     [error, setError] = useState<unknown>(null),
-    [busy, setBusy] = useState(false);
-  const r = useData(base + "/moderation?status=" + status + "&limit=100");
+    [busy, setBusy] = useState(false),
+    [qSearch, setQSearch] = useState(""),
+    [authorFilter, setAuthorFilter] = useState(""),
+    [catFilter, setCatFilter] = useState(""),
+    [levelFilter, setLevelFilter] = useState(""),
+    [hideDuplicates, setHideDuplicates] = useState(false),
+    [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const r = useData(base + "/moderation?status=" + status + "&limit=200");
   const mc = useData(base + "/market-cards?status=" + status);
   const lb = useData(base + "/library-books?status=" + status);
   async function reviewLibraryBook(bookId: string, decision: "approved" | "rejected") {
@@ -328,6 +339,64 @@ function Moderation() {
       setBusy(false);
     }
   }
+  const allSubs: any[] = r.data?.items || [];
+  const authorOf = (s: any) => (s.tenant_name || s.attribution || "Noma’lum muallif").trim();
+  const authors = Array.from(new Set(allSubs.map(authorOf))).sort();
+  const categories = Array.from(new Set(allSubs.map((s) => s.content?.category || "Umumiy"))).sort();
+  const filteredSubs = allSubs.filter((s) => {
+    if (authorFilter && authorOf(s) !== authorFilter) return false;
+    if (catFilter && (s.content?.category || "Umumiy") !== catFilter) return false;
+    if (levelFilter && (s.content?.level || "") !== levelFilter) return false;
+    if (hideDuplicates && s.duplicate_count > 0) return false;
+    if (qSearch.trim()) {
+      const needle = qSearch.trim().toLowerCase();
+      const hay = `${s.content?.title || ""} ${s.content?.category || ""} ${s.content?.topic || ""} ${authorOf(s)}`.toLowerCase();
+      if (!hay.includes(needle)) return false;
+    }
+    return true;
+  });
+  const filteredIds = filteredSubs.map((s) => s.id);
+  const allFilteredSelected =
+    filteredIds.length > 0 && filteredIds.every((id) => selectedIds.includes(id));
+
+  function toggleOne(id: string) {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+  }
+  function toggleAllFiltered() {
+    if (allFilteredSelected) {
+      setSelectedIds((prev) => prev.filter((id) => !filteredIds.includes(id)));
+    } else {
+      setSelectedIds((prev) => Array.from(new Set([...prev, ...filteredIds])));
+    }
+  }
+  async function bulkReview(bulkDecision: "approved" | "rejected") {
+    const targetIds = selectedIds.filter((id) => filteredIds.includes(id));
+    if (!targetIds.length) return;
+    const label = bulkDecision === "approved" ? "ommaga nashr qilish" : "rad etish";
+    if (!confirm(`Tanlangan ${targetIds.length} ta savolni ${label}ni tasdiqlaysizmi?`)) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api(base + "/moderation/bulk", {
+        method: "POST",
+        data: { ids: targetIds, decision: bulkDecision },
+      });
+      setSelectedIds([]);
+      r.reload();
+      toast(
+        bulkDecision === "approved"
+          ? `${res.processed} ta savol nashr qilindi`
+          : `${res.processed} ta savol rad etildi`,
+      );
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+  const activeSelectedCount = selectedIds.filter((id) => filteredIds.includes(id)).length;
   return (
     <>
       <PageTitle
@@ -345,7 +414,7 @@ function Moderation() {
           <button
             key={v}
             className={status === v ? "active" : ""}
-            onClick={() => setStatus(v)}
+            onClick={() => { setStatus(v); setSelectedIds([]); }}
           >
             {t}
           </button>
@@ -449,38 +518,136 @@ function Moderation() {
         )}
       </section>
       <div className="panel">
+        <div className="panel-title" style={{ marginBottom: 12 }}>
+          <h2>Savollar do‘koni moderatsiyasi ({filteredSubs.length} / {allSubs.length})</h2>
+        </div>
+        {!r.loading && !r.error && allSubs.length > 0 && (
+          <>
+            <div className="mod-filter-bar">
+              <input
+                type="search"
+                value={qSearch}
+                onChange={(e) => setQSearch(e.target.value)}
+                placeholder="Savol, mavzu yoki muallif qidirish…"
+              />
+              <select value={authorFilter} onChange={(e) => setAuthorFilter(e.target.value)}>
+                <option value="">Barcha mualliflar ({authors.length})</option>
+                {authors.map((a) => (
+                  <option key={a} value={a}>{a}</option>
+                ))}
+              </select>
+              <select value={catFilter} onChange={(e) => setCatFilter(e.target.value)}>
+                <option value="">Barcha fanlar ({categories.length})</option>
+                {categories.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+              <select value={levelFilter} onChange={(e) => setLevelFilter(e.target.value)}>
+                <option value="">Barcha darajalar</option>
+                <option value="easy">Oson</option>
+                <option value="medium">O‘rtacha</option>
+                <option value="hard">Qiyin</option>
+                <option value="expert">Ekspert</option>
+              </select>
+              <label className="mod-check-inline">
+                <input
+                  type="checkbox"
+                  checked={hideDuplicates}
+                  onChange={(e) => setHideDuplicates(e.target.checked)}
+                />
+                <span>Dublikatlarni yashirish</span>
+              </label>
+            </div>
+
+            <div className="mod-bulk-bar">
+              <label className="mod-check-inline">
+                <input
+                  type="checkbox"
+                  checked={allFilteredSelected}
+                  onChange={toggleAllFiltered}
+                />
+                <strong>Barchasini belgilash ({filteredSubs.length})</strong>
+              </label>
+              <div className="actions">
+                {status !== "approved" && (
+                  <button
+                    type="button"
+                    className="btn primary tiny"
+                    disabled={busy || activeSelectedCount === 0}
+                    onClick={() => void bulkReview("approved")}
+                  >
+                    Tanlanganlarni nashr qilish ({activeSelectedCount})
+                  </button>
+                )}
+                {status !== "rejected" && (
+                  <button
+                    type="button"
+                    className="btn danger tiny"
+                    disabled={busy || activeSelectedCount === 0}
+                    onClick={() => void bulkReview("rejected")}
+                  >
+                    Rad etish ({activeSelectedCount})
+                  </button>
+                )}
+              </div>
+            </div>
+          </>
+        )}
+
         {r.loading ? (
           <Busy />
         ) : r.error ? (
           <ErrorBox error={r.error} retry={r.reload} />
-        ) : !r.data.items.length ? (
-          <Empty title="Navbat bo‘sh" text="Ushbu holatda takliflar yo‘q." />
+        ) : !filteredSubs.length ? (
+          <Empty
+            title={allSubs.length ? "Filtr bo‘yicha savol topilmadi" : "Navbat bo‘sh"}
+            text={allSubs.length ? "Filtrlarni tozalab qayta urinib ko‘ring." : "Ushbu holatda takliflar yo‘q."}
+          />
         ) : (
-          r.data.items.map((s: any) => (
-            <article className="moderation-row" key={s.id}>
-              <div>
-                <h3>{s.content.title}</h3>
-                <p>
-                  {s.content.category} · v{s.source_version} · {s.license}
-                </p>
-                {s.duplicate_count > 0 && (
-                  <Pill tone="amber">
-                    O‘xshash nashr mavjud: {s.duplicate_count}
-                  </Pill>
-                )}
-              </div>
-              <button
-                className="btn secondary"
-                onClick={() => {
-                  setItem(s);
-                  setReason("");
-                  setError(null);
-                }}
-              >
-                Tekshirish
-              </button>
-            </article>
-          ))
+          filteredSubs.map((s: any) => {
+            const checked = selectedIds.includes(s.id);
+            const lvlMap: Record<string, string> = {
+              easy: "Oson",
+              medium: "O‘rtacha",
+              hard: "Qiyin",
+              expert: "Ekspert",
+            };
+            return (
+              <article className={"moderation-row" + (checked ? " is-selected" : "")} key={s.id}>
+                <div className="mod-row-left">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggleOne(s.id)}
+                    aria-label="Savolni belgilash"
+                  />
+                  <div>
+                    <h3>{s.content.title}</h3>
+                    <p>
+                      <strong>{authorOf(s)}</strong> · {s.content.category}
+                      {s.content.topic ? ` · ${s.content.topic}` : ""} ·{" "}
+                      {lvlMap[s.content.level] || s.content.level} · v{s.source_version}
+                    </p>
+                    {s.duplicate_count > 0 && (
+                      <Pill tone="amber">
+                        O‘xshash nashr mavjud: {s.duplicate_count}
+                      </Pill>
+                    )}
+                  </div>
+                </div>
+                <button
+                  className="btn secondary tiny"
+                  onClick={() => {
+                    setItem(s);
+                    setReason("");
+                    setError(null);
+                  }}
+                >
+                  Tekshirish
+                </button>
+              </article>
+            );
+          })
         )}
       </div>
       {item && (
@@ -839,6 +1006,13 @@ function OwnerSettingsForm({ initial }: { initial: any }) {
           maintenance: f.maintenance,
           retention_days: Number(f.retention_days),
           store_enabled: f.store_enabled === "on",
+          games_enabled: f.games_enabled === "on",
+          library_enabled: f.library_enabled === "on",
+          assignments_enabled: f.assignments_enabled === "on",
+          journal_enabled: f.journal_enabled === "on",
+          parent_enabled: f.parent_enabled === "on",
+          practice_enabled: f.practice_enabled === "on",
+          apk_enabled: f.apk_enabled === "on",
           reason: f.reason,
         },
       });
@@ -884,16 +1058,43 @@ function OwnerSettingsForm({ initial }: { initial: any }) {
             defaultValue={initial.retention_days}
           />
         </Field>
-        <label className="check-field">
-          <input
-            type="checkbox"
-            name="store_enabled"
-            defaultChecked={initial.store_enabled}
+        <div style={{ margin: "18px 0 14px" }}>
+          <strong style={{ display: "block", marginBottom: 8 }}>
+            Platforma bo‘limlarini boshqarish (Yoqish / Yashirish)
+          </strong>
+          <small className="muted" style={{ display: "block", marginBottom: 10 }}>
+            O‘chirilgan bo‘limlar foydalanuvchilar, o‘qituvchilar menyusi va bosh sahifadan avtomatik yashiriladi.
+          </small>
+          <div className="feature-flags-grid">
+            {[
+              ["games_enabled", "🎮 O‘yinlar markazi (/games)"],
+              ["library_enabled", "📚 Raqamli kutubxona (/library)"],
+              ["assignments_enabled", "📝 Vazifalar (/vazifalar va Studio)"],
+              ["journal_enabled", "📊 Kurs jurnali (Studio)"],
+              ["store_enabled", "🛒 Savollar do‘koni va Market"],
+              ["practice_enabled", "⚡ Ochiq mashq testlari"],
+              ["parent_enabled", "👨‍👩‍👧 Ota-ona kabineti (/parent)"],
+              ["apk_enabled", "📱 Android APK yuklab olish kartasi"],
+            ].map(([key, label]) => (
+              <label className="flag-toggle" key={key}>
+                <input
+                  type="checkbox"
+                  name={key}
+                  defaultChecked={initial[key] !== false}
+                />
+                <span>{label}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+        <Field label="O‘zgarish asosi (audit uchun)">
+          <textarea
+            name="reason"
+            minLength={5}
+            maxLength={1000}
+            defaultValue="Platforma funksiyalari sozlamalari yangilandi"
+            required
           />
-          <span>Savollar do‘koni ochiq</span>
-        </label>
-        <Field label="O‘zgarish asosi">
-          <textarea name="reason" minLength={10} maxLength={1000} required />
         </Field>
         <button className="btn primary" disabled={busy}>
           Sozlamalarni saqlash

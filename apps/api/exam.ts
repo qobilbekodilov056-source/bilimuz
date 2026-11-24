@@ -649,7 +649,7 @@ export async function analytics(c: Ctx, cid: string, exportAll = false) {
   const s = JSON.parse(card.settings_json);
   const attempts = await rows(
     c.env.DB,
-    `SELECT a.id,a.student_name,s.student_code,a.started_at,a.submitted_at,a.status,a.score,a.max_score,a.percentage,a.correct_count,a.incorrect_count,a.unanswered_count,COALESCE(a.violations_count,0) violations_count,COALESCE(a.away_seconds,0) away_seconds,COALESCE(a.auto_submitted,0) auto_submitted,COALESCE(a.multi_screen,0) multi_screen,COALESCE(a.submitted_at,MIN(?,a.expires_at))-a.started_at duration_seconds FROM attempts a LEFT JOIN students s ON s.tenant_id=a.tenant_id AND s.id=a.student_id WHERE a.tenant_id=? AND a.card_id=? ORDER BY a.started_at DESC,a.id LIMIT ? OFFSET ?`,
+    `SELECT a.id,a.student_name,s.student_code,COALESCE(s.note,'') student_note,a.started_at,a.submitted_at,a.status,a.score,a.max_score,a.percentage,a.correct_count,a.incorrect_count,a.unanswered_count,COALESCE(a.violations_count,0) violations_count,COALESCE(a.away_seconds,0) away_seconds,COALESCE(a.auto_submitted,0) auto_submitted,COALESCE(a.multi_screen,0) multi_screen,COALESCE(a.submitted_at,MIN(?,a.expires_at))-a.started_at duration_seconds FROM attempts a LEFT JOIN students s ON s.tenant_id=a.tenant_id AND s.id=a.student_id WHERE a.tenant_id=? AND a.card_id=? ORDER BY a.started_at DESC,a.id LIMIT ? OFFSET ?`,
     now(),
     tid,
     cid,
