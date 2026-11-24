@@ -112,7 +112,7 @@ export async function session(
       scope,
       scope === "owner" ? 1 : 0,
       now(),
-      now() + (scope === "owner" ? 3600 : 7 * 86400),
+      now() + (scope === "owner" ? 30 * 86400 : 90 * 86400),
     ),
   );
   // Explicit column count kept independent from user role; no role comes from a request body.
@@ -122,13 +122,13 @@ export async function session(
     secure: c.env.ENVIRONMENT !== "development",
     sameSite: "Lax",
     path: "/",
-    maxAge: scope === "owner" ? 3600 : 7 * 86400,
+    maxAge: scope === "owner" ? 30 * 86400 : 90 * 86400,
   });
   setCookie(c, "testlab_csrf", csrfRaw, {
     secure: c.env.ENVIRONMENT !== "development",
     sameSite: "Strict",
     path: "/",
-    maxAge: 7 * 86400,
+    maxAge: 90 * 86400,
   });
   return csrfRaw;
 }

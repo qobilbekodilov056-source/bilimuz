@@ -277,6 +277,9 @@ function MaintenanceBanner() {
 function Home() {
   const [slug, setSlug] = useState("");
   const [entryMode, setEntryMode] = useState<"test" | "parent">("test");
+  const me = useData("/api/v2/auth/me");
+  const loggedUser = me.data?.user;
+  const cabinetPath = loggedUser?.scope === "owner" ? "/owner" : "/studio";
   const navigate = useNavigate();
   return (
     <div className="public-page">
@@ -286,9 +289,15 @@ function Home() {
           <Link to="/parent">Ota-ona kabineti</Link>
           <Link to="/library">Kutubxona</Link>
           <Link to="/store">Savollar do‘koni</Link>
-          <Link className="btn secondary" to="/login">
-            Kirish <ArrowRight size={16} />
-          </Link>
+          {loggedUser ? (
+            <Link className="btn primary" to={cabinetPath}>
+              Kabinetim <ArrowRight size={16} />
+            </Link>
+          ) : (
+            <Link className="btn secondary" to="/login">
+              Kirish <ArrowRight size={16} />
+            </Link>
+          )}
         </nav>
       </header>
       <main className="landing">
@@ -307,9 +316,15 @@ function Home() {
             tegishli, bitta tartibli ish maydonida.
           </p>
           <div className="actions">
-            <Link to="/register" className="btn primary">
-              Workspace yaratish <ArrowRight size={18} />
-            </Link>
+            {loggedUser ? (
+              <Link to={cabinetPath} className="btn primary">
+                Kabinetga o‘tish <ArrowRight size={18} />
+              </Link>
+            ) : (
+              <Link to="/register" className="btn primary">
+                Workspace yaratish <ArrowRight size={18} />
+              </Link>
+            )}
             <Link to="/practice" className="btn secondary">
               Ochiq testlar
             </Link>
@@ -319,15 +334,30 @@ function Home() {
             <Link to="/store" className="btn secondary">
               Savollarni ko‘rish
             </Link>
-            <a
-              href="/api/v2/app/bilimuz.apk"
-              download="BilimUZ.apk"
-              className="btn secondary"
-            >
-              <ArrowDownToLine size={16} />
-              Android ilova (APK)
-            </a>
+
           </div>
+          {!/BilimUZApp/i.test(navigator.userAgent) && (
+          <a
+            href="/api/v2/app/bilimuz.apk"
+            download="BilimUZ.apk"
+            className="apk-download-card"
+          >
+            <span className="apk-icon-wrap" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor">
+                <path d="M17.523 15.341a.85.85 0 1 1 0-1.7.85.85 0 0 1 0 1.7m-11.046 0a.85.85 0 1 1 0-1.7.85.85 0 0 1 0 1.7m11.405-6.02 1.9-3.29a.4.4 0 0 0-.146-.546.4.4 0 0 0-.546.146l-1.924 3.332A11.77 11.77 0 0 0 12 7.82a11.77 11.77 0 0 0-5.266 1.143L4.81 5.631a.4.4 0 0 0-.546-.146.4.4 0 0 0-.146.546l1.9 3.29C2.735 11.095.5 14.374.5 18.25h23c0-3.876-2.235-7.155-5.618-8.929" />
+              </svg>
+            </span>
+            <span className="apk-card-copy">
+              <small>RASMIY ANDROID ILOVA · BEPUL</small>
+              <strong>Bilim UZ mobil ilovasini yuklab olish</strong>
+              <span>Android uchun APK · ~2.2 MB · 1 bosishda o‘rnatish</span>
+            </span>
+            <span className="apk-card-cta">
+              <ArrowDownToLine size={16} />
+              Yuklab olish
+            </span>
+          </a>
+          )}
           <div className="landing-features">
             <span>
               <ShieldCheck />

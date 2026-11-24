@@ -20,13 +20,11 @@ import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 
 class MainActivity : AppCompatActivity() {
 
     private val startUrl = "https://bilimuz.dpdns.org"
     private lateinit var webView: WebView
-    private lateinit var swipe: SwipeRefreshLayout
     private lateinit var progress: ProgressBar
     private lateinit var offlineBox: LinearLayout
     private var fileCallback: ValueCallback<Array<Uri>>? = null
@@ -52,10 +50,8 @@ class MainActivity : AppCompatActivity() {
         val root = FrameLayout(this)
         root.setBackgroundColor(Color.WHITE)
 
-        swipe = SwipeRefreshLayout(this)
         webView = WebView(this)
-        swipe.addView(webView)
-        root.addView(swipe)
+        root.addView(webView)
 
         progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
             isIndeterminate = false
@@ -111,9 +107,6 @@ class MainActivity : AppCompatActivity() {
         CookieManager.getInstance().setAcceptCookie(true)
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
 
-        swipe.setOnRefreshListener { webView.reload() }
-        swipe.setOnChildScrollUpCallback { _, _ -> webView.scrollY > 0 }
-
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val url = request.url.toString()
@@ -128,13 +121,12 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onPageFinished(view: WebView, url: String) {
-                swipe.isRefreshing = false
                 progress.visibility = View.GONE
+                CookieManager.getInstance().flush()
             }
 
             override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
                 if (request.isForMainFrame) {
-                    swipe.isRefreshing = false
                     offlineBox.visibility = View.VISIBLE
                 }
             }
@@ -195,5 +187,10 @@ class MainActivity : AppCompatActivity() {
         })
 
         webView.loadUrl(startUrl)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        CookieManager.getInstance().flush()
     }
 }

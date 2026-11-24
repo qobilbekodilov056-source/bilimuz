@@ -77,6 +77,17 @@ export function AuthPage({
   mode: "login" | "register" | "forgot" | "owner";
 }) {
   const config = useData("/api/v2/config");
+  const me = useData("/api/v2/auth/me");
+  const navAuto = useNavigate();
+  useEffect(() => {
+    const u = me.data?.user;
+    if (!u) return;
+    if (mode === "login" || mode === "register") {
+      navAuto(u.scope === "owner" ? "/owner" : "/studio", { replace: true });
+    } else if (mode === "owner" && u.scope === "owner") {
+      navAuto("/owner", { replace: true });
+    }
+  }, [me.data, mode, navAuto]);
   const [error, setError] = useState<unknown>(null),
     [message, setMessage] = useState(""),
     [busy, setBusy] = useState(false),
