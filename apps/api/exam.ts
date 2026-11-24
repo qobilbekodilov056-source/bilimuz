@@ -185,7 +185,7 @@ exam.post("/cards/:slug/attempts", async (c) => {
     c,
     z
       .object({
-        name: z.string().trim().min(3).max(120),
+        name: z.string().trim().max(120).default(""),
         student_code: z.string().trim().max(64).default(""),
         pin: z.string().max(32).default(""),
         resume_key: z.string().regex(/^[A-Za-z0-9_-]{43,128}$/),
@@ -220,18 +220,22 @@ exam.post("/cards/:slug/attempts", async (c) => {
   if (s.access_mode === "pin" && !(await passwordVerify(d.pin, card.pin_hash)))
     fail("PIN noto‘g‘ri", 403);
   let student: Row | null = null;
-  if (d.student_code)
+  const cleanCode = d.student_code.trim().toUpperCase().replace(/[\s-]+/g, "");
+  if (cleanCode)
     student = await first(
       c.env.DB,
-      "SELECT id,name,group_id FROM students WHERE tenant_id=? AND student_code=? AND status='active'",
+      "SELECT id,name,group_id FROM students WHERE tenant_id=? AND (UPPER(REPLACE(REPLACE(student_code,'-',''),' ',''))=? OR UPPER(student_code)=?) AND status='active'",
       card.tenant_id,
-      d.student_code,
+      cleanCode,
+      d.student_code.trim().toUpperCase(),
     );
   if (
-    (d.student_code && !student) ||
+    (cleanCode && !student) ||
     (card.group_id && (!student || student.group_id !== card.group_id))
   )
     fail("O‘quvchi kodi yoki guruh mos kelmadi", 403);
+  if (!student && d.name.trim().length < 2)
+    fail("Ism va familiyangizni kiriting", 422);
   const name = student?.name || d.name.replace(/\s+/g, " ");
   const identity = await digest(
     student
@@ -929,6 +933,178 @@ exam.post("/cards/:slug/comments", async (c) => {
     now(),
   ).run();
   return c.json({ ok: true, id: cid }, 201);
+});
+
+// Ota-ona va o'quvchi kabineti — kod orqali natija, davomat, yutuq/chegirmalar (sana filtri bilan)
+exam.get("/parent/:code", async (c) => {
+  await rate(c, "parent-lookup", 20, 600);
+  const raw = decodeURIComponent(c.req.param("code") || "").trim();
+  const norm = raw.toUpperCase().replace(/[\s-]+/g, "");
+  if (norm.length < 3) fail("O‘quvchi kodini to‘g‘ri kiriting", 422);
+
+  const student = await first(
+    c.env.DB,
+    `SELECT s.id, s.tenant_id, s.group_id, s.student_code, s.name, g.name group_name, t.name center_name
+     FROM students s
+     JOIN tenants t ON t.id=s.tenant_id
+     LEFT JOIN groups g ON g.id=s.group_id AND g.tenant_id=s.tenant_id
+     WHERE (UPPER(REPLACE(REPLACE(s.student_code,'-',''),' ',''))=? OR UPPER(s.student_code)=?)
+       AND s.status='active' AND t.status='active'
+     LIMIT 1`,
+    norm,
+    raw.toUpperCase(),
+  );
+  if (!student) fail("Bunday kodli o‘quvchi topilmadi. Kodni qayta tekshiring.", 404);
+
+  const fromStr = /^\d{4}-\d{2}-\d{2}$/.test(c.req.query("from") || "") ? c.req.query("from")! : "";
+  const toStr = /^\d{4}-\d{2}-\d{2}$/.test(c.req.query("to") || "") ? c.req.query("to")! : "";
+  const fromTs = fromStr ? Math.floor(Date.parse(fromStr + "T00:00:00+05:00") / 1000) : 0;
+  const toTs = toStr ? Math.floor(Date.parse(toStr + "T23:59:59+05:00") / 1000) : 9999999999;
+
+  const attList = await rows(
+    c.env.DB,
+    `SELECT lesson_date, status
+     FROM attendance_records
+     WHERE tenant_id=? AND student_id=?
+       AND (?='' OR lesson_date>=?)
+       AND (?='' OR lesson_date<=?)
+     ORDER BY lesson_date DESC LIMIT 200`,
+    student.tenant_id,
+    student.id,
+    fromStr,
+    fromStr,
+    toStr,
+    toStr,
+  );
+
+  let present = 0, late = 0, absent = 0, excused = 0;
+  for (const r of attList) {
+    if (r.status === "present") present++;
+    else if (r.status === "late") late++;
+    else if (r.status === "absent") absent++;
+    else if (r.status === "excused") excused++;
+  }
+  const attMarked = present + late + absent + excused;
+  const attPct = attMarked ? Math.round(((present + late) / attMarked) * 1000) / 10 : null;
+
+  const normName = (v: string) => v.trim().toLowerCase().replace(/\s+/g, " ");
+  const sn = normName(student.name);
+
+  const rawAttempts = await rows(
+    c.env.DB,
+    `SELECT a.id, a.student_id, a.student_name, a.score, a.max_score, a.percentage,
+      a.correct_count, a.incorrect_count, a.unanswered_count, a.started_at, a.submitted_at,
+      COALESCE(a.violations_count,0) violations_count, COALESCE(a.auto_submitted,0) auto_submitted,
+      c.title card_title, c.slug card_slug, c.settings_json
+     FROM attempts a
+     JOIN cards c ON c.id=a.card_id AND c.tenant_id=a.tenant_id
+     WHERE a.tenant_id=? AND a.status='submitted' AND a.submitted_at>=? AND a.submitted_at<=?
+     ORDER BY a.submitted_at DESC LIMIT 300`,
+    student.tenant_id,
+    fromTs,
+    toTs,
+  );
+
+  const archivedAttempts = await rows(
+    c.env.DB,
+    `SELECT card_title, card_slug, card_category, student_name, score, max_score, percentage, passed,
+      correct_count, incorrect_count, unanswered_count, submitted_at, duration_seconds
+     FROM archived_results
+     WHERE tenant_id=? AND submitted_at>=? AND submitted_at<=?
+     ORDER BY submitted_at DESC LIMIT 200`,
+    student.tenant_id,
+    fromTs,
+    toTs,
+  );
+
+  const tests: any[] = [];
+  for (const a of rawAttempts) {
+    if (a.student_id === student.id || (!a.student_id && normName(a.student_name) === sn)) {
+      const cfg = JSON.parse(a.settings_json || "{}");
+      const passPct = Number(cfg.pass_percent ?? 70);
+      const pct = Number(a.percentage || 0);
+      tests.push({
+        id: a.id,
+        title: a.card_title,
+        slug: a.card_slug,
+        category: cfg.category || "",
+        score: Number(a.score || 0),
+        max_score: Number(a.max_score || 0),
+        percentage: pct,
+        pass_percent: passPct,
+        passed: pct >= passPct,
+        reward: cfg.reward || "",
+        correct_count: Number(a.correct_count || 0),
+        incorrect_count: Number(a.incorrect_count || 0),
+        unanswered_count: Number(a.unanswered_count || 0),
+        violations_count: Number(a.violations_count || 0),
+        auto_submitted: !!a.auto_submitted,
+        submitted_at: Number(a.submitted_at),
+        duration_seconds: Math.max(0, Number(a.submitted_at) - Number(a.started_at)),
+      });
+    }
+  }
+  for (const a of archivedAttempts) {
+    if (normName(a.student_name) === sn) {
+      tests.push({
+        id: "arch-" + a.submitted_at,
+        title: a.card_title,
+        slug: a.card_slug,
+        category: a.card_category || "",
+        score: Number(a.score || 0),
+        max_score: Number(a.max_score || 0),
+        percentage: Number(a.percentage || 0),
+        pass_percent: 70,
+        passed: !!a.passed,
+        reward: "",
+        correct_count: Number(a.correct_count || 0),
+        incorrect_count: Number(a.incorrect_count || 0),
+        unanswered_count: Number(a.unanswered_count || 0),
+        violations_count: 0,
+        auto_submitted: false,
+        submitted_at: Number(a.submitted_at),
+        duration_seconds: Number(a.duration_seconds || 0),
+      });
+    }
+  }
+
+  tests.sort((a, b) => b.submitted_at - a.submitted_at);
+  const taken = tests.length;
+  const passed = tests.filter((t) => t.passed).length;
+  const avgPct = taken
+    ? Math.round((tests.reduce((acc, t) => acc + t.percentage, 0) / taken) * 10) / 10
+    : null;
+  const earnedRewards = tests
+    .filter((t) => t.passed && t.reward)
+    .map((t) => ({
+      test_title: t.title,
+      percentage: t.percentage,
+      reward: t.reward,
+      submitted_at: t.submitted_at,
+    }));
+
+  return c.json({
+    student: {
+      name: student.name,
+      student_code: student.student_code,
+      group_name: student.group_name || "Guruhsiz",
+      center_name: student.center_name || "Bilim UZ",
+    },
+    summary: {
+      avg_percent: avgPct,
+      tests_taken: taken,
+      tests_passed: passed,
+      attendance_percent: attPct,
+      present_count: present,
+      late_count: late,
+      absent_count: absent,
+      excused_count: excused,
+      rewards_count: earnedRewards.length,
+    },
+    rewards: earnedRewards,
+    tests,
+    attendance: attList,
+  });
 });
 
 export function csvExport(c: Ctx, attempts: Row[]) {

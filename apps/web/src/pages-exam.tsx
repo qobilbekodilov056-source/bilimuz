@@ -173,6 +173,7 @@ export function ExamPage() {
                 <input
                   name="student_code"
                   required={card.data.card.roster_required}
+                  placeholder="Masalan: K48291"
                   maxLength={64}
                   autoComplete="off"
                 />

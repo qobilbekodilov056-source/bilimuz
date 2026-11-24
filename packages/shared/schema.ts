@@ -160,7 +160,7 @@ export const groupSchema = z
 export const studentSchema = z
   .object({
     name: z.string().trim().min(3).max(120),
-    student_code: z.string().trim().min(3).max(64),
+    student_code: z.string().trim().max(64).optional().default(""),
     group_id: z.string().max(80).nullable().default(null),
   })
   .strict();

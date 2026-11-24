@@ -151,6 +151,15 @@ app.route("/api/v2/teacher", teacher);
 app.route("/api/v2/owner", owner);
 app.route("/api/v2/public", exam);
 app.route("/api/v2/library", libraryPublic);
+app.get("/api/v2/app/bilimuz.apk", async (c) => {
+  const obj = await c.env.FILES.get("app/BilimUZ.apk");
+  if (!obj) fail("Android ilova hali yuklanmagan. Tez orada qo‘shiladi.", 404);
+  const headers = new Headers();
+  headers.set("Content-Type", "application/vnd.android.package-archive");
+  headers.set("Content-Disposition", 'attachment; filename="BilimUZ.apk"');
+  headers.set("Cache-Control", "public, max-age=3600");
+  return new Response(obj.body, { headers });
+});
 app.get("/api/v2/media/*", async (c) => {
   const key = decodeURIComponent(c.req.path.replace(/^\/api\/v2\/media\//, ""));
   if (!key.startsWith("qimg/") || key.includes("..")) {

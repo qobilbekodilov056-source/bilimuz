@@ -366,6 +366,42 @@ teacher.get("/students", async (c) => {
 teacher.get("/students/:id", async (c) =>
   c.json({ student: await scoped(c, "students", c.req.param("id")) }),
 );
+async function generateStudentCode(db: D1Database): Promise<string> {
+  const letters = "ABCDEFGHJKMNPQRSTUVWXYZ";
+  for (let i = 0; i < 20; i++) {
+    const buf = new Uint32Array(2);
+    crypto.getRandomValues(buf);
+    const l = letters[buf[0] % letters.length];
+    const num = 10000 + (buf[1] % 90000);
+    const code = `${l}${num}`;
+    const exists = await first(db, "SELECT 1 ok FROM students WHERE UPPER(student_code)=?", code);
+    if (!exists) return code;
+  }
+  return "S" + String(Date.now()).slice(-5);
+}
+teacher.post("/students/upgrade-codes", async (c) => {
+  const tid = c.get("principal").tenantId!;
+  const list = await rows(
+    c.env.DB,
+    "SELECT id, student_code FROM students WHERE tenant_id=?",
+    tid,
+  );
+  let updated = 0;
+  for (const s of list) {
+    if (!/^[A-Z]\d{5}$/.test(String(s.student_code || ""))) {
+      const code = await generateStudentCode(c.env.DB);
+      await stmt(
+        c.env.DB,
+        "UPDATE students SET student_code=? WHERE tenant_id=? AND id=?",
+        code,
+        tid,
+        s.id,
+      ).run();
+      updated++;
+    }
+  }
+  return c.json({ ok: true, updated });
+});
 teacher.post("/students", async (c) => {
   const d = await body(c, studentSchema);
   if (d.group_id) await scoped(c, "groups", d.group_id);
@@ -378,17 +414,18 @@ teacher.post("/students", async (c) => {
   );
   if (n!.n >= n!.quota) fail("O‘quvchilar limiti tugagan", 429);
   const sid = id();
+  const code = await generateStudentCode(c.env.DB);
   await stmt(
     c.env.DB,
     "INSERT INTO students(id,tenant_id,group_id,student_code,name,created_at) VALUES(?,?,?,?,?,?)",
     sid,
     tid,
     d.group_id,
-    d.student_code,
+    code,
     d.name,
     now(),
   ).run();
-  return c.json({ id: sid }, 201);
+  return c.json({ id: sid, student_code: code }, 201);
 });
 teacher.put("/students/:id", async (c) => {
   await scoped(c, "students", c.req.param("id"));

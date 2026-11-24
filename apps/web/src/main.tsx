@@ -51,6 +51,7 @@ import {
 } from "./pages-teacher";
 import { ExamPage, PracticeCatalog, PracticeExam } from "./pages-exam";
 import { LibraryCatalog, LibraryBookReader, LibraryStudio } from "./pages-library";
+import { ParentPortal } from "./pages-parent";
 import { OwnerPage } from "./pages-owner";
 import "./style.css";
 export const AccountContext = createContext<any>(null);
@@ -275,12 +276,14 @@ function MaintenanceBanner() {
 }
 function Home() {
   const [slug, setSlug] = useState("");
+  const [entryMode, setEntryMode] = useState<"test" | "parent">("test");
   const navigate = useNavigate();
   return (
     <div className="public-page">
       <header className="public-header">
         <Brand />
         <nav>
+          <Link to="/parent">Ota-ona kabineti</Link>
           <Link to="/library">Kutubxona</Link>
           <Link to="/store">Savollar do‘koni</Link>
           <Link className="btn secondary" to="/login">
@@ -316,6 +319,14 @@ function Home() {
             <Link to="/store" className="btn secondary">
               Savollarni ko‘rish
             </Link>
+            <a
+              href="/api/v2/app/bilimuz.apk"
+              download="BilimUZ.apk"
+              className="btn secondary"
+            >
+              <ArrowDownToLine size={16} />
+              Android ilova (APK)
+            </a>
           </div>
           <div className="landing-features">
             <span>
@@ -339,28 +350,60 @@ function Home() {
           <span className="eyebrow">O‘QUVCHI UCHUN</span>
           <h2>Testga tayyormisiz?</h2>
           <p>O‘qituvchingiz bergan test kodini kiriting.</p>
+          <div className="tabs-bar" style={{ marginBottom: 12 }}>
+            <button
+              type="button"
+              className={entryMode === "test" ? "btn primary tiny" : "btn secondary tiny"}
+              onClick={() => {
+                setEntryMode("test");
+                setSlug("");
+              }}
+            >
+              Testga kirish
+            </button>
+            <button
+              type="button"
+              className={entryMode === "parent" ? "btn primary tiny" : "btn secondary tiny"}
+              onClick={() => {
+                setEntryMode("parent");
+                setSlug("");
+              }}
+            >
+              Ota-ona / Natija
+            </button>
+          </div>
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              const m = /^([A-Za-z]{2})[\s-]?(\d{5})$/.exec(slug.trim());
-              navigate("/t/" + encodeURIComponent(m ? `${m[1].toUpperCase()}-${m[2]}` : slug.trim()));
+              if (entryMode === "parent") {
+                const cleaned = slug.trim().toUpperCase().replace(/[\s-]+/g, "");
+                navigate("/parent/" + encodeURIComponent(cleaned));
+              } else {
+                const m = /^([A-Za-z]{2})[\s-]?(\d{5})$/.exec(slug.trim());
+                navigate("/t/" + encodeURIComponent(m ? `${m[1].toUpperCase()}-${m[2]}` : slug.trim()));
+              }
             }}
           >
             <label className="field">
-              <span>Test kodi</span>
+              <span>{entryMode === "parent" ? "O‘quvchi kodi" : "Test kodi"}</span>
               <input
                 value={slug}
                 onChange={(e) => setSlug(e.target.value)}
-                placeholder="Masalan: KP-48291"
+                placeholder={entryMode === "parent" ? "Masalan: K48291" : "Masalan: KP-48291"}
                 required
                 maxLength={80}
               />
             </label>
             <button className="btn primary full">
-              Testga kirish <ArrowRight size={18} />
+              {entryMode === "parent" ? "Natijalarni ko‘rish" : "Testga kirish"}{" "}
+              <ArrowRight size={18} />
             </button>
           </form>
-          <small>Test muddati va qoidalari kirishda ko‘rsatiladi.</small>
+          <small>
+            {entryMode === "parent"
+              ? "Farzandingiz davomati, test natijalari va yutuqlari ro‘yxatdan o‘tishsiz ko‘rinadi."
+              : "Test muddati va qoidalari kirishda ko‘rsatiladi."}
+          </small>
         </div>
       </main>
       <footer className="public-footer">
@@ -434,6 +477,8 @@ function App() {
           <Route path="/practice/:slug" element={<PracticeExam />} />
           <Route path="/library" element={<LibraryCatalog />} />
           <Route path="/library/:id" element={<LibraryBookReader />} />
+          <Route path="/parent" element={<ParentPortal />} />
+          <Route path="/parent/:code" element={<ParentPortal />} />
           <Route path="/store" element={<StorePage publicView />} />
           <Route path="/studio" element={<StudioShell />}>
             <Route index element={<Dashboard />} />

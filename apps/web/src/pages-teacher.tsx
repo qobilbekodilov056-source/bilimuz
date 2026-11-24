@@ -1027,16 +1027,40 @@ export function GroupsStudents({ students = false }: { students?: boolean }) {
             : "O‘quvchilaringizni alohida guruhlarga birlashtiring."
         }
         actions={
-          <button
-            className="btn primary"
-            onClick={() => {
-              setEdit({});
-              setError(null);
-            }}
-          >
-            <Plus size={17} />
-            {students ? "O‘quvchi qo‘shish" : "Guruh yaratish"}
-          </button>
+          <>
+            {students && (
+              <button
+                type="button"
+                className="btn secondary"
+                disabled={busy}
+                onClick={async () => {
+                  if (!confirm("Eski qisqa kodli barcha o‘quvchilarga yangi 1 harf + 5 raqamli (masalan: K48291) kod berilsinmi?")) return;
+                  setBusy(true);
+                  try {
+                    const res = await api(base + "/students/upgrade-codes", { method: "POST", data: {} });
+                    result.reload();
+                    toast(res.updated ? `${res.updated} ta o‘quvchi kodi yangilandi` : "Barcha kodlar allaqachon yangi formatda");
+                  } catch (e) {
+                    setError(e);
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                Kodlarni yangilash (A12345)
+              </button>
+            )}
+            <button
+              className="btn primary"
+              onClick={() => {
+                setError(null);
+                setEdit({});
+              }}
+            >
+              <Plus size={16} />
+              {students ? "O‘quvchi qo‘shish" : "Guruh yaratish"}
+            </button>
+          </>
         }
       />
       {!!error && !edit && <ErrorBox error={error} />}
@@ -1074,6 +1098,19 @@ export function GroupsStudents({ students = false }: { students?: boolean }) {
                     </td>
                     <td>
                       <div className="row-actions">
+                        {students && (
+                          <button
+                            className="btn secondary tiny"
+                            onClick={async () => {
+                              const link = location.origin + "/parent/" + encodeURIComponent(r.student_code);
+                              const msg = `Assalomu alaykum! Farzandingiz ${r.name} ning dars davomati, test natijalari va yutuqlarini kuzatish:\nHavola: ${link}\nO‘quvchi kodi: ${r.student_code}`;
+                              await navigator.clipboard.writeText(msg);
+                              toast("Ota-ona uchun xabar va havola nusxalandi");
+                            }}
+                          >
+                            Ota-onaga
+                          </button>
+                        )}
                         <button
                           className="icon-btn"
                           aria-label="Tahrirlash"
@@ -1128,12 +1165,11 @@ export function GroupsStudents({ students = false }: { students?: boolean }) {
             </Field>
             {students ? (
               <>
-                <Field label="O‘quvchi kodi">
+                <Field label="O‘quvchi kodi (ixtiyoriy — bo‘sh qolsa avtomatik yaratiladi)">
                   <input
                     name="student_code"
-                    defaultValue={edit.student_code}
-                    required
-                    minLength={3}
+                    defaultValue={edit.student_code || ""}
+                    placeholder="Masalan: K48291 (avtomatik)"
                     maxLength={64}
                   />
                 </Field>
