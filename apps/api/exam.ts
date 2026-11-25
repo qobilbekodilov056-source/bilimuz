@@ -738,6 +738,47 @@ function exportRows(attempts: Row[]) {
   ];
 }
 // Stateless public practice (guest mode) — zero database writes
+
+exam.get("/landing-stats", async (c) => {
+  await rate(c, "landing-stats", 240, 60);
+  c.header("Cache-Control", "public, max-age=300");
+  const safeCount = async (sql: string) => {
+    try {
+      const r: any = await first(c.env.DB, sql);
+      return Number(r?.cnt || 0);
+    } catch {
+      return 0;
+    }
+  };
+  const [students, questions, attempts, marketSolves, books, teachers] = await Promise.all([
+    safeCount("SELECT COUNT(*) cnt FROM students WHERE status='active'"),
+    safeCount("SELECT COUNT(*) cnt FROM questions WHERE archived=0"),
+    safeCount("SELECT COUNT(*) cnt FROM attempts WHERE status='submitted'"),
+    safeCount("SELECT COALESCE(SUM(market_solves), 0) cnt FROM cards"),
+    safeCount("SELECT COUNT(*) cnt FROM library_books WHERE published=1 AND moderation_status='approved'"),
+    safeCount("SELECT COUNT(*) cnt FROM tenants WHERE status='active'"),
+  ]);
+  let hot_tests: any[] = [];
+  try {
+    hot_tests = await rows(
+      c.env.DB,
+      `SELECT slug, title, description, COALESCE(market_solves, 0) solves
+       FROM cards
+       WHERE status='active' AND group_id IS NULL AND settings_json LIKE '%"access_mode":"open"%'
+       ORDER BY COALESCE(market_solves, 0) DESC, updated_at DESC
+       LIMIT 4`,
+    );
+  } catch {}
+  return c.json({
+    students,
+    questions,
+    solves: attempts + marketSolves,
+    books,
+    teachers,
+    hot_tests,
+  });
+});
+
 exam.get("/practice", async (c) => {
   const list = await rows(
     c.env.DB,

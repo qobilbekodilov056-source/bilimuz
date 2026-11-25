@@ -1306,6 +1306,53 @@ teacher.get("/submissions", async (c) =>
     ),
   }),
 );
+
+teacher.post("/store/copy-pack", async (c) => {
+  if (!(await settings(c.env)).store_enabled)
+    fail("Savollar do‘koni vaqtincha yopiq", 503);
+  const d = await body(
+    c,
+    z.object({
+      category: z.string().trim().min(1).max(120),
+      level: z.enum(["", "easy", "medium", "hard"]).optional().default(""),
+      limit: z.coerce.number().int().min(1).max(100).optional().default(100),
+    }).strict(),
+  );
+  const list = await rows(
+    c.env.DB,
+    `SELECT id, public_content_json
+     FROM store_items
+     WHERE status='approved'
+       AND COALESCE(NULLIF(TRIM(category), ''), 'Umumiy')=?
+       AND (?='' OR level=?)
+     ORDER BY published_at DESC
+     LIMIT ?`,
+    d.category,
+    d.level,
+    d.level,
+    d.limit,
+  );
+  if (!list.length) fail("Bu packda tasdiqlangan savollar topilmadi", 404);
+  let copied = 0;
+  let skipped = 0;
+  for (const r of list) {
+    try {
+      const content = JSON.parse(r.public_content_json);
+      const q = questionSchema.parse(content.question);
+      await insertQuestion(c, q, {
+        store_item_id: r.id,
+        license: content.license,
+        attribution: content.attribution,
+        source_version: content.source_version,
+      });
+      copied++;
+    } catch {
+      skipped++;
+    }
+  }
+  return c.json({ ok: true, category: d.category, total: list.length, copied, skipped }, 201);
+});
+
 teacher.post("/store/copy-bulk", async (c) => {
   if (!(await settings(c.env)).store_enabled)
     fail("Savollar do‘koni vaqtincha yopiq", 503);

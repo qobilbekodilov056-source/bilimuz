@@ -212,6 +212,24 @@ function renderBookBlocks(text: string) {
   return blocks;
 }
 
+
+function bookCoverTheme(subject: string) {
+  const k = String(subject || "").toLowerCase();
+  if (k.includes("python") || k.includes("informatika") || k.includes("web") || k.includes("dastur")) {
+    return { bg: "linear-gradient(145deg, #0f172a 0%, #1e3a5f 60%, #0369a1 100%)", accent: "#38bdf8", code: "IT" };
+  }
+  if (k.includes("kompyuter") || k.includes("excel") || k.includes("word")) {
+    return { bg: "linear-gradient(145deg, #0b2e28 0%, #0c6b56 65%, #0c8066 100%)", accent: "#6ee7b7", code: "PC" };
+  }
+  if (k.includes("ingliz") || k.includes("english") || k.includes("til")) {
+    return { bg: "linear-gradient(145deg, #27104e 0%, #4c1d95 62%, #6d28d9 100%)", accent: "#c4b5fd", code: "EN" };
+  }
+  if (k.includes("matematika") || k.includes("algebra") || k.includes("fizika")) {
+    return { bg: "linear-gradient(145deg, #1f1916 0%, #78350f 62%, #b45309 100%)", accent: "#fde68a", code: "MATH" };
+  }
+  return { bg: "linear-gradient(145deg, #162d3d 0%, #1e4b5e 65%, #0f766e 100%)", accent: "#7cf2d2", code: "UZ" };
+}
+
 export function LibraryCatalog() {
   const [search, setSearch] = useState("");
   const [subject, setSubject] = useState("");
@@ -292,40 +310,56 @@ export function LibraryCatalog() {
           />
         </div>
       ) : (
-        <div className="cards-grid">
+        <div className="lib-pro-grid">
           {items.map((b: any) => {
             const href =
               "/library/" +
               encodeURIComponent(b.id) +
               (b.match_chapter_id ? "?ch=" + encodeURIComponent(b.match_chapter_id) : "");
+            const theme = bookCoverTheme(b.subject);
+            const hasPdf = Boolean(b.pdf_key || b.has_pdf);
             return (
-              <article className="panel test-card lib-card" key={b.id}>
-                <div className="test-card-top">
-                  <Pill tone="blue">{b.subject}</Pill>
-                  <small className="muted lib-views">
-                    <Eye size={13} /> {b.views_count}
-                  </small>
-                </div>
-                <h2>{b.title}</h2>
-                {b.match_chapter_title && (
-                  <div className="lib-match-badge">
-                    Topilgan bob: <strong>{b.match_chapter_title}</strong>
+              <article className="lib-pro-card" key={b.id}>
+                <Link to={href} className="lib-pro-cover" style={{ background: theme.bg }}>
+                  <div className="lib-pro-spine" aria-hidden="true" />
+                  <div className="lib-pro-cover-top">
+                    <span className="lib-pro-subj" style={{ borderColor: theme.accent, color: theme.accent }}>
+                      {b.subject}
+                    </span>
+                    <span className="lib-pro-views">
+                      <Eye size={13} /> {b.views_count || 0}
+                    </span>
                   </div>
-                )}
-                <p className="lib-snippet">
-                  {b.match_snippet || b.summary || "Elektron o‘quv qo‘llanma"}
-                </p>
-                <div className="test-card-details">
-                  <span>
-                    <BookOpen size={15} />
-                    {b.chapter_count} ta bob
-                  </span>
-                  {b.author_name && <span>{b.author_name}</span>}
-                </div>
-                <Link className="btn primary full" to={href}>
-                  Kitobni o‘qish
-                  <ArrowRight size={17} />
+                  <div className="lib-pro-cover-mid">
+                    <span className="lib-pro-mono" style={{ color: theme.accent }}>
+                      BILIM UZ · {hasPdf ? "PDF DARSLIK" : "ELEKTRON KITOB"}
+                    </span>
+                    <h2>{b.title}</h2>
+                  </div>
+                  <div className="lib-pro-cover-bot">
+                    <span>{b.author_name || "Bilim UZ Kutubxonasi"}</span>
+                    <span className="lib-pro-code">{theme.code}</span>
+                  </div>
                 </Link>
+
+                <div className="lib-pro-body">
+                  {b.match_chapter_title && (
+                    <div className="lib-match-badge">
+                      Topilgan bob: <strong>{b.match_chapter_title}</strong>
+                    </div>
+                  )}
+                  <p className="lib-pro-desc">
+                    {b.match_snippet || b.summary || "Interaktiv boblar, misollar va o‘zini sinash savollari jamlangan zamonaviy elektron qo‘llanma."}
+                  </p>
+                  <div className="lib-pro-foot">
+                    <span className="lib-pro-ch">
+                      <BookOpen size={15} /> {b.chapter_count || 0} ta bob
+                    </span>
+                    <Link className="lib-pro-read" to={href}>
+                      O‘qish <ArrowRight size={15} />
+                    </Link>
+                  </div>
+                </div>
               </article>
             );
           })}

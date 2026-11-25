@@ -222,6 +222,49 @@ app.get("/api/v2/store", async (c) => {
     })),
   });
 });
+
+app.get("/api/v2/store/packs", async (c) => {
+  const s = await settings(c.env);
+  if (!s.store_enabled) fail("Savollar do‘koni vaqtincha yopiq", 503);
+  const q = (c.req.query("q") || "").trim().toLowerCase();
+  const grouped = await rows(
+    c.env.DB,
+    `SELECT COALESCE(NULLIF(TRIM(category), ''), 'Umumiy') category,
+            COUNT(*) total,
+            SUM(CASE WHEN level='easy' THEN 1 ELSE 0 END) easy,
+            SUM(CASE WHEN level='medium' THEN 1 ELSE 0 END) medium,
+            SUM(CASE WHEN level='hard' THEN 1 ELSE 0 END) hard,
+            MAX(published_at) latest_at
+     FROM store_items
+     WHERE status='approved'
+     GROUP BY COALESCE(NULLIF(TRIM(category), ''), 'Umumiy')
+     ORDER BY total DESC, latest_at DESC`,
+  );
+  const packs = [];
+  for (const g of grouped) {
+    const cat = String(g.category || "Umumiy");
+    if (q && !cat.toLowerCase().includes(q)) continue;
+    const samples = await rows(
+      c.env.DB,
+      `SELECT json_extract(public_content_json, '$.question.title') title
+       FROM store_items
+       WHERE status='approved' AND COALESCE(NULLIF(TRIM(category), ''), 'Umumiy')=?
+       ORDER BY published_at DESC LIMIT 3`,
+      cat,
+    );
+    packs.push({
+      category: cat,
+      total: Number(g.total || 0),
+      easy: Number(g.easy || 0),
+      medium: Number(g.medium || 0),
+      hard: Number(g.hard || 0),
+      latest_at: Number(g.latest_at || 0),
+      sample_titles: samples.map((x: any) => String(x.title || "")).filter(Boolean),
+    });
+  }
+  return c.json({ packs });
+});
+
 app.get("/api/v2/store/:id", async (c) => {
   if (!(await settings(c.env)).store_enabled)
     fail("Savollar do‘koni vaqtincha yopiq", 503);
@@ -238,8 +281,168 @@ app.get("/api/v2/store/:id", async (c) => {
   });
 });
 app.all("/api/*", (c) => c.json({ error: "API manzili topilmadi" }, 404));
+function escHtml(v: string) {
+  return String(v || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+app.get("/robots.txt", (c) => {
+  const origin = c.env.APP_ORIGIN.replace(/\/+$/, "");
+  c.header("Content-Type", "text/plain; charset=utf-8");
+  c.header("Cache-Control", "public, max-age=3600");
+  return c.body(
+    [
+      "User-agent: *",
+      "Allow: /",
+      "Allow: /practice",
+      "Allow: /library",
+      "Allow: /games",
+      "Allow: /store",
+      "Disallow: /studio",
+      "Disallow: /owner",
+      "Disallow: /api/",
+      "",
+      "Sitemap: " + origin + "/sitemap.xml",
+    ].join("\n"),
+  );
+});
+
+app.get("/sitemap.xml", async (c) => {
+  const origin = c.env.APP_ORIGIN.replace(/\/+$/, "");
+  const today = new Date().toISOString().slice(0, 10);
+  const urls: { loc: string; lastmod?: string; priority: string }[] = [
+    { loc: origin + "/", lastmod: today, priority: "1.0" },
+    { loc: origin + "/practice", lastmod: today, priority: "0.9" },
+    { loc: origin + "/library", lastmod: today, priority: "0.9" },
+    { loc: origin + "/store", lastmod: today, priority: "0.8" },
+    { loc: origin + "/games", lastmod: today, priority: "0.8" },
+    { loc: origin + "/student", lastmod: today, priority: "0.7" },
+    { loc: origin + "/parent", lastmod: today, priority: "0.7" },
+  ];
+  try {
+    const cards = await rows(
+      c.env.DB,
+      `SELECT slug, updated_at FROM cards
+       WHERE status='active' AND group_id IS NULL AND settings_json LIKE '%"access_mode":"open"%'
+       ORDER BY updated_at DESC LIMIT 300`,
+    );
+    for (const r of cards) {
+      const lm = r.updated_at ? new Date(Number(r.updated_at) * 1000).toISOString().slice(0, 10) : today;
+      urls.push({ loc: origin + "/practice/" + encodeURIComponent(String(r.slug)), lastmod: lm, priority: "0.8" });
+    }
+  } catch {}
+  try {
+    const books = await rows(
+      c.env.DB,
+      `SELECT id, updated_at FROM library_books WHERE published=1 AND moderation_status='approved' ORDER BY updated_at DESC LIMIT 300`,
+    );
+    for (const b of books) {
+      const lm = b.updated_at ? new Date(Number(b.updated_at) * 1000).toISOString().slice(0, 10) : today;
+      urls.push({ loc: origin + "/library/" + encodeURIComponent(String(b.id)), lastmod: lm, priority: "0.8" });
+    }
+  } catch {}
+  try {
+    const games = await rows(
+      c.env.DB,
+      `SELECT id, created_at FROM games WHERE status='published' ORDER BY created_at DESC LIMIT 100`,
+    );
+    for (const g of games) {
+      const lm = g.created_at ? new Date(Number(g.created_at) * 1000).toISOString().slice(0, 10) : today;
+      urls.push({ loc: origin + "/games/" + encodeURIComponent(String(g.id)), lastmod: lm, priority: "0.7" });
+    }
+  } catch {}
+
+  const xml =
+    '<?xml version="1.0" encoding="UTF-8"?>\n' +
+    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+    urls
+      .map(
+        (u) =>
+          `  <url><loc>${escHtml(u.loc)}</loc><lastmod>${u.lastmod || today}</lastmod><priority>${u.priority}</priority></url>`,
+      )
+      .join("\n") +
+    "\n</urlset>";
+  c.header("Content-Type", "application/xml; charset=utf-8");
+  c.header("Cache-Control", "public, max-age=900");
+  return c.body(xml);
+});
+
 app.get("*", async (c) => {
   const res = await c.env.ASSETS.fetch(c.req.raw);
+  const ct = res.headers.get("content-type") || "";
+  const pathname = new URL(c.req.url).pathname;
+
+  if (ct.includes("text/html")) {
+    let seoTitle = "";
+    let seoDesc = "";
+    const origin = c.env.APP_ORIGIN.replace(/\/+$/, "");
+    const canonicalUrl = origin + pathname;
+
+    const mPractice = /^\/practice\/([^/]+)$/.exec(pathname);
+    const mExam = /^\/t\/([^/]+)$/.exec(pathname);
+    const mBook = /^\/library\/([^/]+)$/.exec(pathname);
+
+    try {
+      if (mPractice || mExam) {
+        const slug = decodeURIComponent((mPractice || mExam)![1]);
+        const card: any = await first(
+          c.env.DB,
+          "SELECT title, description FROM cards WHERE UPPER(slug)=UPPER(?) AND status='active' LIMIT 1",
+          slug,
+        );
+        if (card?.title) {
+          seoTitle = `${card.title} — Onlayn test | Bilim UZ`;
+          seoDesc = String(card.description || "").trim() || `${card.title} bo‘yicha bepul onlayn mashq testi va natija tahlili — Bilim UZ.`;
+        }
+      } else if (mBook) {
+        const bid = decodeURIComponent(mBook[1]);
+        const book: any = await first(
+          c.env.DB,
+          "SELECT title, subject, summary FROM library_books WHERE id=? AND published=1 AND moderation_status='approved' LIMIT 1",
+          bid,
+        );
+        if (book?.title) {
+          seoTitle = `${book.title} (${book.subject}) — Elektron kutubxona | Bilim UZ`;
+          seoDesc = String(book.summary || "").trim() || `${book.title} elektron darsligi va qo‘llanmasi — Bilim UZ kutubxonasida bepul o‘qing.`;
+        }
+      } else if (pathname === "/practice") {
+        seoTitle = "Ochiq mashq testlari — Informatika, Ingliz tili, Matematika | Bilim UZ";
+        seoDesc = "Barcha fanlardan bepul onlayn mashq testlari, tezkor natija va xatolar tahlili — Bilim UZ.";
+      } else if (pathname === "/library") {
+        seoTitle = "Elektron kutubxona — Darsliklar va qo‘llanmalar | Bilim UZ";
+        seoDesc = "Informatika, Python, Ingliz tili va boshqa fanlardan bepul elektron darsliklar hamda PDF qo‘llanmalar.";
+      } else if (pathname === "/store") {
+        seoTitle = "Savollar do‘koni — Tayyor fan va mavzu packlari | Bilim UZ";
+        seoDesc = "O‘qituvchilar uchun mavzu va fan bo‘yicha tayyor savollar packlari va test kartalari.";
+      }
+    } catch {}
+
+    if (seoTitle || pathname !== "/") {
+      let html = await res.text();
+      if (seoTitle) {
+        const tEsc = escHtml(seoTitle);
+        const dEsc = escHtml(seoDesc.slice(0, 165));
+        html = html
+          .replace(/<title>[^<]*<\/title>/, `<title>${tEsc}</title>`)
+          .replace(/(<meta[^>]+name="description"[^>]+content=")[^"]*(")/, `$1${dEsc}$2`)
+          .replace(/(<meta[^>]+property="og:title"[^>]+content=")[^"]*(")/, `$1${tEsc}$2`)
+          .replace(/(<meta[^>]+property="og:description"[^>]+content=")[^"]*(")/, `$1${dEsc}$2`)
+          .replace(/(<meta[^>]+name="twitter:title"[^>]+content=")[^"]*(")/, `$1${tEsc}$2`)
+          .replace(/(<meta[^>]+name="twitter:description"[^>]+content=")[^"]*(")/, `$1${dEsc}$2`);
+      }
+      html = html
+        .replace(/(<link[^>]+rel="canonical"[^>]+href=")[^"]*(")/, `$1${escHtml(canonicalUrl)}$2`)
+        .replace(/(<meta[^>]+property="og:url"[^>]+content=")[^"]*(")/, `$1${escHtml(canonicalUrl)}$2`);
+      res.headers.forEach((v, k) => {
+        if (k.toLowerCase() !== "content-length") c.header(k, v);
+      });
+      return c.body(html, res.status as 200);
+    }
+  }
+
   res.headers.forEach((v, k) => c.header(k, v));
   return res.body ? c.body(res.body as ReadableStream, res.status as 200) : c.body(null, res.status as 200);
 });

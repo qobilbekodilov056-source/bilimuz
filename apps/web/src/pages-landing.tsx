@@ -19,6 +19,7 @@ import {
   X,
 } from "lucide-react";
 import { useConfig } from "./main";
+import { DynamicLandingShowcase } from "./pages-landing-dynamic";
 
 function LandingBrand() {
   return (
@@ -382,6 +383,8 @@ export function LandingPage() {
 
         </div>
       </div>
+
+      <DynamicLandingShowcase />
 
       {/* ==================== 3-SAHIFA: YAKUNIY CTA + FOOTER ==================== */}
       <div className="lp-screen lp-screen-3">

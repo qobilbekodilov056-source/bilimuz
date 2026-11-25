@@ -2963,9 +2963,10 @@ function PublicCommentsModal({ card, onClose }: { card: any; onClose: () => void
 }
 
 export function StorePage({ publicView = false }: { publicView?: boolean }) {
-  const [storeTab, setStoreTab] = useState<"cards" | "questions">("cards");
+  const [storeTab, setStoreTab] = useState<"cards" | "packs" | "questions">("packs");
   const [viewComments, setViewComments] = useState<any>(null);
   const marketCards = useData("/api/v2/public/market-cards");
+  const storePacks = useData("/api/v2/store/packs");
   const [search, setSearch] = useState(""),
     [category, setCategory] = useState(""),
     [level, setLevel] = useState(""),
@@ -3005,6 +3006,22 @@ export function StorePage({ publicView = false }: { publicView?: boolean }) {
         data: { ids },
       });
       toast(`${res.copied} ta savol bazangizga yuklandi${res.skipped ? ` (${res.skipped} tasi mavjud)` : ""}`);
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function copyPack(cat: string, total: number) {
+    if (!confirm(`«${cat}» packidagi barcha (${total} ta) savolni shaxsiy bazangizga yuklab olasizmi?`)) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api(base + "/store/copy-pack", {
+        method: "POST",
+        data: { category: cat, limit: 100 },
+      });
+      toast(`📦 «${cat}» packidan ${res.copied} ta savol bazangizga yuklandi${res.skipped ? ` (${res.skipped} tasi mavjud)` : ""}`);
     } catch (e) {
       setError(e);
     } finally {
@@ -3059,6 +3076,13 @@ export function StorePage({ publicView = false }: { publicView?: boolean }) {
       <div className="tabs-bar">
         <button
           type="button"
+          className={storeTab === "packs" ? "btn primary tiny" : "btn secondary tiny"}
+          onClick={() => setStoreTab("packs")}
+        >
+          📦 Mavzu bo‘yicha packlar ({storePacks.data?.packs?.length ?? 0})
+        </button>
+        <button
+          type="button"
           className={storeTab === "cards" ? "btn primary tiny" : "btn secondary tiny"}
           onClick={() => setStoreTab("cards")}
         >
@@ -3069,10 +3093,74 @@ export function StorePage({ publicView = false }: { publicView?: boolean }) {
           className={storeTab === "questions" ? "btn primary tiny" : "btn secondary tiny"}
           onClick={() => setStoreTab("questions")}
         >
-          Savollar bazasi
+          Barcha savollar
         </button>
       </div>
-      {storeTab === "cards" ? (
+      {storeTab === "packs" ? (
+        <>
+          {!!error && <ErrorBox error={error} />}
+          {storePacks.loading ? (
+            <Busy />
+          ) : storePacks.error ? (
+            <ErrorBox error={storePacks.error} retry={storePacks.reload} />
+          ) : !storePacks.data?.packs?.length ? (
+            <div className="panel">
+              <Empty
+                title="Hali mavzu bo‘yicha savollar packi yo‘q"
+                text="Savollar bazasiga fan va mavzular bo‘yicha savollar yuklangach, ular avtomatik packlarga ajralib shu yerda chiqadi."
+              />
+            </div>
+          ) : (
+            <div className="cards-grid">
+              {storePacks.data.packs.map((pk: any) => (
+                <article className="panel test-card" key={pk.category} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div className="test-card-top">
+                    <Pill tone="green">📦 {pk.total} ta savol</Pill>
+                    <small className="muted">
+                      {pk.easy ? `Oson: ${pk.easy}` : ""}{pk.medium ? ` · O‘rta: ${pk.medium}` : ""}{pk.hard ? ` · Qiyin: ${pk.hard}` : ""}
+                    </small>
+                  </div>
+                  <h3 style={{ margin: "2px 0 0" }}>{pk.category}</h3>
+                  {pk.sample_titles?.length > 0 && (
+                    <ul style={{ margin: "2px 0 6px", paddingLeft: 18, fontSize: 13.5, color: "#475569", display: "flex", flexDirection: "column", gap: 4 }}>
+                      {pk.sample_titles.map((t: string, idx: number) => (
+                        <li key={idx}>{t.length > 78 ? t.slice(0, 78) + "…" : t}</li>
+                      ))}
+                    </ul>
+                  )}
+                  <div style={{ marginTop: "auto", display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      className="btn secondary tiny"
+                      onClick={() => {
+                        setCategory(pk.category);
+                        setOffset(0);
+                        setStoreTab("questions");
+                      }}
+                    >
+                      Packni ko‘rish
+                    </button>
+                    {publicView ? (
+                      <Link className="btn primary tiny" to="/register">
+                        Packni yuklab olish
+                      </Link>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn primary tiny"
+                        disabled={busy}
+                        onClick={() => copyPack(pk.category, pk.total)}
+                      >
+                        Butun packni yuklash ({pk.total})
+                      </button>
+                    )}
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </>
+      ) : storeTab === "cards" ? (
         <>
           {marketCards.loading ? (
             <Busy />
