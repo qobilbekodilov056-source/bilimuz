@@ -22,11 +22,14 @@ import {
   ChevronDown,
   ChevronRight,
   ClipboardList,
+  CreditCard,
   FolderOpen,
   Grid2X2,
   LifeBuoy,
+  Lock,
   LogOut,
   Menu,
+  MessageCircle,
   Search,
   Settings,
   ShieldCheck,
@@ -54,12 +57,17 @@ import { LibraryCatalog, LibraryBookReader, LibraryStudio } from "./pages-librar
 import { GamesCatalogPage, GamePlayPage } from "./pages-games";
 import { StudentAssignmentsPage, TeacherAssignmentsPage } from "./pages-assignments";
 import { StudentCabinetPage } from "./pages-student-hub";
+import { LandingPage } from "./pages-landing";
+import { ChatPage } from "./pages-chat";
+import { TeacherBillingPage } from "./pages-billing";
 import { ParentPortal } from "./pages-parent";
 import { OwnerPage } from "./pages-owner";
 import "./style.css";
 const DEFAULT_FLAGS = {
   store_enabled: true,
   games_enabled: true,
+  chat_enabled: true,
+  tg_bot_username: "",
   library_enabled: true,
   assignments_enabled: true,
   journal_enabled: true,
@@ -69,6 +77,54 @@ const DEFAULT_FLAGS = {
 };
 export const ConfigContext = createContext<typeof DEFAULT_FLAGS>(DEFAULT_FLAGS);
 export const useConfig = () => useContext(ConfigContext);
+
+export type PlanState = {
+  plan: { id: string; name: string; max_groups: number; max_students: number; max_questions: number; expires_at?: number };
+  usage: { groups: number; students: number; questions: number };
+  loading: boolean;
+};
+const DEFAULT_PLAN_STATE: PlanState = {
+  plan: { id: "free", name: "Start (Bepul)", max_groups: 2, max_students: 30, max_questions: 60, expires_at: 0 },
+  usage: { groups: 0, students: 0, questions: 0 },
+  loading: true,
+};
+export const PlanContext = createContext<PlanState>(DEFAULT_PLAN_STATE);
+export const usePlan = () => useContext(PlanContext);
+
+const PRO_ROUTES = new Set(["imports", "journal", "assignments", "chat", "library"]);
+
+function ProGate({ title, desc, children }: { title: string; desc: string; children: any }) {
+  const { plan, loading } = usePlan();
+  if (loading || plan.id === "pro" || plan.id === "center") return children;
+  return (
+    <div className="pro-gate-card">
+      <div className="pro-gate-icon">
+        <Lock size={28} />
+      </div>
+      <span className="pro-gate-eyebrow">USTOZ PRO FUNKSIYASI</span>
+      <h1>{title} qulflangan</h1>
+      <p>{desc}</p>
+      <div className="pro-gate-compare">
+        <div>
+          <small>Joriy tarifingiz</small>
+          <strong>{plan.name}</strong>
+        </div>
+        <div>
+          <small>Talab etiladi</small>
+          <strong style={{ color: "#0c8066" }}>Ustoz Pro / Ultra</strong>
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+        <Link to="/studio/billing" className="btn primary">
+          ⚡ Ustoz Pro ga o‘tish
+        </Link>
+        <Link to="/studio" className="btn secondary">
+          Boshqaruvga qaytish
+        </Link>
+      </div>
+    </div>
+  );
+}
 
 function FeatureGate({ enabled, title, children }: { enabled: boolean; title: string; children: any }) {
   if (enabled) return children;
@@ -94,6 +150,7 @@ const nav = [
   ["students", "O‘quvchilar", Users],
   ["journal", "Kurs jurnali", CalendarDays],
   ["assignments", "Vazifalar", ClipboardList],
+  ["chat", "Guruhlar chati", MessageCircle],
   ["library", "Kutubxona", BookMarked],
   ["analytics", "Analitika", BarChart3],
   ["store", "Savollar do‘koni", Store],
@@ -110,6 +167,24 @@ function Brand({ inverse = false }: { inverse?: boolean }) {
   );
 }
 function StudioShell() {
+  const [planState, setPlanState] = useState<PlanState>(DEFAULT_PLAN_STATE);
+  const planInfo = planState.plan;
+  useEffect(() => {
+    fetch("/api/v2/teacher/billing/status", { credentials: "same-origin" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.plan) {
+          setPlanState({
+            plan: d.plan,
+            usage: d.usage || DEFAULT_PLAN_STATE.usage,
+            loading: false,
+          });
+        } else {
+          setPlanState((p) => ({ ...p, loading: false }));
+        }
+      })
+      .catch(() => setPlanState((p) => ({ ...p, loading: false })));
+  }, []);
   const cfg = useConfig();
   const account = useData("/api/v2/auth/me");
   const location = useLocation();
@@ -215,7 +290,17 @@ function StudioShell() {
           ))}
         </nav>
         <div className="dock-bottom">
-          <NavLink to="/studio/settings" onClick={() => setOpen(false)}>
+          <NavLink to="/studio/billing" className="dock-plan-btn">
+          <CreditCard size={16} />
+          <span className="dock-plan-copy">
+            <strong>{planInfo && planInfo.id !== "free" ? planInfo.name : "Tarifni yangilash"}</strong>
+            {planInfo?.expires_at ? <small>{new Date(planInfo.expires_at * 1000).toLocaleDateString("uz-UZ")}</small> : null}
+          </span>
+          <span className={"dock-plan-badge is-" + (planInfo?.id || "free")}>
+            {planInfo?.id === "center" ? "ULTRA" : (planInfo?.id || "free").toUpperCase()}
+          </span>
+        </NavLink>
+        <NavLink to="/studio/settings" onClick={() => setOpen(false)}>
             <Settings size={19} />
             Sozlamalar
           </NavLink>
@@ -283,7 +368,7 @@ function StudioShell() {
         </header>
         <main id="main-content" className="main-content">
           <MaintenanceBanner />
-          <Outlet />
+          <PlanContext.Provider value={planState}><Outlet /></PlanContext.Provider>
         </main>
         <footer className="app-footer">
           <span>Bilim UZ · Powered by SysOne</span>
@@ -322,6 +407,7 @@ function Home() {
           <Link to="/student">O‘quvchi kabineti</Link>
           {cfg.assignments_enabled && <Link to="/vazifalar">Vazifalar</Link>}
           {cfg.games_enabled && <Link to="/games">O‘yinlar</Link>}
+          {cfg.chat_enabled && <Link to="/chat">Chat</Link>}
           {cfg.library_enabled && <Link to="/library">Kutubxona</Link>}
           {cfg.store_enabled && <Link to="/store">Savollar do‘koni</Link>}
           {loggedUser ? (
@@ -559,7 +645,7 @@ function App() {
     <ToastProvider>
       <ConfigContext.Provider value={cfg}><BrowserRouter>
         <Routes>
-          <Route path="/" element={<Home />} />
+          <Route path="/" element={<LandingPage />} />
           <Route path="/privacy" element={<Privacy />} />
           <Route path="/login" element={<AuthPage mode="login" />} />
           <Route path="/register" element={<AuthPage mode="register" />} />
@@ -574,6 +660,8 @@ function App() {
           <Route path="/library/:id" element={<FeatureGate enabled={cfg.library_enabled} title="Kutubxona"><LibraryBookReader /></FeatureGate>} />
           <Route path="/games" element={<FeatureGate enabled={cfg.games_enabled} title="O‘yinlar markazi"><GamesCatalogPage /></FeatureGate>} />
           <Route path="/games/:id" element={<FeatureGate enabled={cfg.games_enabled} title="O‘yinlar markazi"><GamePlayPage /></FeatureGate>} />
+          <Route path="/chat" element={<FeatureGate enabled={cfg.chat_enabled} title="Jonli Chat"><ChatPage /></FeatureGate>} />
+          <Route path="/chat/:code" element={<FeatureGate enabled={cfg.chat_enabled} title="Jonli Chat"><ChatPage /></FeatureGate>} />
           <Route path="/parent" element={<FeatureGate enabled={cfg.parent_enabled} title="Ota-ona kabineti"><ParentPortal /></FeatureGate>} />
           <Route path="/parent/:code" element={<FeatureGate enabled={cfg.parent_enabled} title="Ota-ona kabineti"><ParentPortal /></FeatureGate>} />
           <Route path="/vazifalar" element={<FeatureGate enabled={cfg.assignments_enabled} title="Vazifalar"><StudentAssignmentsPage /></FeatureGate>} />
@@ -584,16 +672,18 @@ function App() {
           <Route path="/studio" element={<StudioShell />}>
             <Route index element={<Dashboard />} />
             <Route path="questions" element={<Questions />} />
-            <Route path="imports" element={<ImportPage />} />
+            <Route path="imports" element={<ProGate title="Import markazi (Excel / CSV)" desc="Yuzlab savollarni Excel va CSV fayllardan 1 bosishda yuklash Ustoz Pro tarifida ochiladi."><ImportPage /></ProGate>} />
             <Route path="groups" element={<GroupsStudents />} />
             <Route path="students" element={<GroupsStudents students />} />
-            <Route path="journal" element={<JournalPage />} />
-            <Route path="assignments" element={<TeacherAssignmentsPage />} />
-            <Route path="library" element={<LibraryStudio />} />
+            <Route path="journal" element={<ProGate title="Kurs jurnali" desc="Guruhlar davomati, bilim foizlari jadvali va CSV eksport Ustoz Pro tarifida ochiladi."><JournalPage /></ProGate>} />
+            <Route path="assignments" element={<ProGate title="Uyga vazifalar" desc="O‘quvchilarga rasm, fayl va testli uyga vazifalar berish hamda baholash Ustoz Pro tarifida ochiladi."><TeacherAssignmentsPage /></ProGate>} />
+            <Route path="chat" element={<FeatureGate enabled={cfg.chat_enabled} title="Jonli Chat"><ProGate title="Guruhlar chati" desc="Har bir sinfingiz uchun yopiq jonli guruh chati va moderatsiya Ustoz Pro tarifida ochiladi."><ChatPage studioMode /></ProGate></FeatureGate>} />
+            <Route path="library" element={<ProGate title="Raqamli kutubxona studiosi" desc="Word (.docx) va PDF kitoblarni nashr etish hamda guruhlarga ulashish Ustoz Pro tarifida ochiladi."><LibraryStudio /></ProGate>} />
             <Route path="cards" element={<Cards />} />
             <Route path="analytics" element={<Analytics />} />
             <Route path="store" element={<StorePage />} />
             <Route path="support" element={<SupportPage />} />
+            <Route path="billing" element={<TeacherBillingPage />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>
           <Route path="/owner/*" element={<OwnerPage />} />

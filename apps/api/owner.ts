@@ -19,6 +19,8 @@ import { authenticate, csrf } from "./auth";
 import { questionSchema } from "../../packages/shared/schema";
 import { createBackup } from "./backup";
 import { gamesOwner } from "./games";
+import { billingOwner } from "./billing";
+import { tgbotOwner } from "./tgbot";
 export const owner = new Hono<AppEnv>();
 owner.use("*", async (c, next) => {
   const p = await authenticate(c);
@@ -28,6 +30,8 @@ owner.use("*", async (c, next) => {
   await next();
 });
 owner.route("/games", gamesOwner);
+owner.route("/billing", billingOwner);
+owner.route("/tgbot", tgbotOwner);
 owner.get("/overview", async (c) => {
   const stats = await first(
     c.env.DB,
@@ -47,16 +51,70 @@ owner.get("/overview", async (c) => {
     c.env.DB,
     "SELECT id,created_at FROM backup_manifest ORDER BY created_at DESC LIMIT 1",
   );
+  const d1Limit = 500 * 1024 * 1024; // 500 MB Cloudflare D1 Free
+  const d1Used = Number(size?.bytes || 0);
+  const r2Limit = 10 * 1024 * 1024 * 1024; // 10 GB Cloudflare R2 Free
+  let r2Used = 0;
+  let r2Count = 0;
+  const r2Breakdown: Record<string, { bytes: number; count: number }> = {
+    apk: { bytes: 0, count: 0 },
+    cosmetics: { bytes: 0, count: 0 },
+    libpdf: { bytes: 0, count: 0 },
+    hw: { bytes: 0, count: 0 },
+    qimg: { bytes: 0, count: 0 },
+    backups: { bytes: 0, count: 0 },
+    other: { bytes: 0, count: 0 },
+  };
+  try {
+    let cursor: string | undefined = undefined;
+    for (let page = 0; page < 5; page++) {
+      const listed = await c.env.FILES.list({ limit: 1000, cursor });
+      for (const obj of listed.objects || []) {
+        const sz = Number(obj.size || 0);
+        r2Used += sz;
+        r2Count++;
+        const k = obj.key || "";
+        const bucket =
+          k.startsWith("app/") ? "apk" :
+          k.startsWith("cosmetics/") ? "cosmetics" :
+          k.startsWith("libpdf/") ? "libpdf" :
+          k.startsWith("hw/") ? "hw" :
+          k.startsWith("qimg/") ? "qimg" :
+          k.startsWith("backup") ? "backups" : "other";
+        r2Breakdown[bucket].bytes += sz;
+        r2Breakdown[bucket].count++;
+      }
+      if (!listed.truncated || !listed.cursor) break;
+      cursor = listed.cursor;
+    }
+  } catch {}
+
   return c.json({
     stats,
     health: {
       database: "ok",
-      storage_bytes: size!.bytes,
+      storage_bytes: d1Used,
       last_backup: backup || null,
+    },
+    resources: {
+      d1: {
+        used_bytes: d1Used,
+        limit_bytes: d1Limit,
+        free_bytes: Math.max(0, d1Limit - d1Used),
+        percent: Number(((d1Used / d1Limit) * 100).toFixed(2)),
+      },
+      r2: {
+        used_bytes: r2Used,
+        limit_bytes: r2Limit,
+        free_bytes: Math.max(0, r2Limit - r2Used),
+        percent: Number(((r2Used / r2Limit) * 100).toFixed(3)),
+        files_count: r2Count,
+        breakdown: r2Breakdown,
+      },
     },
     usage: metric || null,
     usage_notice:
-      "Workers/D1 usage tashqi monitoring orqali yuklanadi; bo‘sh qiymat nol sarfni bildirmaydi.",
+      "D1 (500 MB) va R2 (10 GB) Cloudflare bepul tarif limitlari bo‘yicha jonli hisoblanadi.",
     thresholds: [70, 85, 95],
   });
 });
@@ -487,6 +545,11 @@ owner.put("/settings", async (c) => {
         parent_enabled: z.boolean().default(true),
         practice_enabled: z.boolean().default(true),
         apk_enabled: z.boolean().default(true),
+        chat_enabled: z.boolean().default(true),
+        firebase_db_url: z.string().max(300).optional().default(""),
+        billing_card_number: z.string().max(40).optional().default(""),
+        billing_card_holder: z.string().max(80).optional().default(""),
+        tg_bot_username: z.string().max(80).optional().default(""),
         reason: z.string().min(5).max(1000),
       })
       .strict(),
@@ -561,3 +624,83 @@ owner.get("/readiness", async (c) =>
     environment: c.env.ENVIRONMENT,
   }),
 );
+
+// Owner Cosmetic Packs (Banners, Transparent PNG Frames, Avatars, Titles)
+owner.get("/shop-items", async (c) => {
+  try {
+    const items = await rows(
+      c.env.DB,
+      "SELECT * FROM shop_items_custom ORDER BY created_at DESC LIMIT 200",
+    );
+    return c.json({ items });
+  } catch {
+    return c.json({ items: [] });
+  }
+});
+
+owner.post("/shop-items", async (c) => {
+  const fd = await c.req.formData();
+  const slot = String(fd.get("slot") || "").trim();
+  if (!["banner", "frame", "avatar", "title"].includes(slot)) {
+    fail("Tur noto‘g‘ri (banner, frame, avatar, title)", 400);
+  }
+  const name = String(fd.get("name") || "").trim().slice(0, 80);
+  if (name.length < 2) fail("Nomini kiriting", 400);
+  const description = String(fd.get("description") || "").trim().slice(0, 200);
+  const price = Math.max(0, Math.min(100000, Math.round(Number(fd.get("price") || 0))));
+  const rarityRaw = String(fd.get("rarity") || "rare").trim();
+  const rarity = ["free", "common", "rare", "epic", "legendary"].includes(rarityRaw) ? rarityRaw : "rare";
+  const titleText = String(fd.get("title_text") || "").trim().slice(0, 60);
+  let imageUrl = String(fd.get("image_url") || "").trim().slice(0, 500);
+  let imageKey = "";
+
+  const file = fd.get("file");
+  const itemId = "pack_" + id().slice(0, 12);
+
+  if (file && typeof file !== "string" && file.size > 0) {
+    if (file.size > 2 * 1024 * 1024) {
+      fail("Fayl hajmi 2 MB dan oshmasligi kerak (WebP/PNG tavsiya etiladi)", 400);
+    }
+    const mime = file.type || "image/png";
+    const ext =
+      mime.includes("webp") ? "webp" :
+      mime.includes("gif") ? "gif" :
+      mime.includes("svg") ? "svg" :
+      mime.includes("jpeg") || mime.includes("jpg") ? "jpg" : "png";
+    imageKey = `cosmetics/${itemId}.${ext}`;
+    await c.env.FILES.put(imageKey, await file.arrayBuffer(), {
+      httpMetadata: { contentType: mime },
+    });
+    imageUrl = `/api/v2/media/${imageKey}`;
+  }
+
+  await stmt(
+    c.env.DB,
+    `INSERT INTO shop_items_custom
+      (id, slot, name, description, price, rarity, image_key, image_url, title_text, active, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+    itemId,
+    slot,
+    name,
+    description,
+    price,
+    rarity,
+    imageKey,
+    imageUrl,
+    titleText,
+    now(),
+  ).run();
+
+  return c.json({ ok: true, id: itemId, image_url: imageUrl });
+});
+
+owner.delete("/shop-items/:id", async (c) => {
+  const itemId = c.req.param("id");
+  const row = await first(c.env.DB, "SELECT image_key FROM shop_items_custom WHERE id=?", itemId);
+  if (!row) fail("Pack topilmadi", 404);
+  if (row.image_key) {
+    try { await c.env.FILES.delete(row.image_key); } catch {}
+  }
+  await stmt(c.env.DB, "DELETE FROM shop_items_custom WHERE id=?", itemId).run();
+  return c.json({ ok: true });
+});

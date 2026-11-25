@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { notifyParentNewAssignment, notifyParentHomeworkGraded } from "./tgbot";
 import { z } from "zod";
 import type { AppEnv } from "./types";
 import { body, fail, first, id, now, rate, rows, stmt } from "./core";
@@ -88,6 +89,7 @@ assignmentsTeacher.post("/", async (c) => {
     ts,
     ts,
   ).run();
+  notifyParentNewAssignment(c, tid, d.group_id || null, d.title, d.due_at || null);
   return c.json({ id: aid }, 201);
 });
 
@@ -201,11 +203,11 @@ assignmentsTeacher.put("/:id/submissions/:subId/grade", async (c) => {
   const tid = c.get("principal").tenantId!;
   const aid = c.req.param("id");
   const subId = c.req.param("subId");
-  const a = await first(c.env.DB, "SELECT max_score FROM assignments WHERE tenant_id=? AND id=?", tid, aid);
+  const a = await first(c.env.DB, "SELECT title, max_score FROM assignments WHERE tenant_id=? AND id=?", tid, aid);
   if (!a) fail("Vazifa topilmadi", 404);
   const sub = await first(
     c.env.DB,
-    "SELECT id FROM assignment_submissions WHERE tenant_id=? AND assignment_id=? AND id=?",
+    "SELECT id, student_id FROM assignment_submissions WHERE tenant_id=? AND assignment_id=? AND id=?",
     tid,
     aid,
     subId,
@@ -226,6 +228,7 @@ assignmentsTeacher.put("/:id/submissions/:subId/grade", async (c) => {
     tid,
     subId,
   ).run();
+  notifyParentHomeworkGraded(c, tid, sub.student_id, a.title || "Vazifa", d.score, Number(a.max_score || 100), d.feedback || "");
   return c.json({ ok: true });
 });
 
@@ -275,7 +278,7 @@ async function findStudentByCode(db: D1Database, rawCode: string) {
 assignmentsPublic.get("/student/:code", async (c) => {
   const rawCode = c.req.param("code") || "";
   if (rawCode === "__empty__") return c.json({ student: null, items: [], summary: null });
-  await rate(c, "student-hw", 60, 60);
+  await rate(c, "student-hw", 240, 60);
   const st = await findStudentByCode(c.env.DB, rawCode);
   if (!st) fail("Bunday o‘quvchi kodi topilmadi. O‘qituvchingizdan aniq kodingizni so‘rang.", 404);
 
@@ -455,7 +458,7 @@ assignmentsPublic.post("/student/:code/:assignmentId/submit", async (c) => {
 assignmentsPublic.get("/leaderboard/:code", async (c) => {
   const rawCode = c.req.param("code") || "";
   if (rawCode === "__empty__") return c.json({ group_name: "", my_rank: null, total_students: 0, top10: [], me: null });
-  await rate(c, "student-lb", 60, 60);
+  await rate(c, "student-lb", 240, 60);
   const st = await findStudentByCode(c.env.DB, rawCode);
   if (!st) fail("O‘quvchi kodi topilmadi", 404);
 
@@ -518,6 +521,26 @@ assignmentsPublic.get("/leaderboard/:code", async (c) => {
     hwMap.set(r.student_id, Number(r.hw_done || 0));
   }
 
+  const cosMap = new Map<string, { banner: string; frame: string; avatar: string; title: string }>();
+  try {
+    const cosRows = await rows(
+      c.env.DB,
+      `SELECT sc.student_id, sc.equipped_banner, sc.equipped_frame, sc.equipped_avatar, sc.equipped_title
+       FROM student_cosmetics sc
+       JOIN students s ON s.id = sc.student_id
+       WHERE s.tenant_id=?`,
+      st.tenant_id,
+    );
+    for (const r of cosRows) {
+      cosMap.set(r.student_id, {
+        banner: r.equipped_banner || "default_navy",
+        frame: r.equipped_frame || "none",
+        avatar: r.equipped_avatar || "initials",
+        title: r.equipped_title || "",
+      });
+    }
+  } catch {}
+
   const ranked = peers
     .map((p: any) => {
       const a = attMap.get(p.id) || { total: 0, good: 0 };
@@ -535,17 +558,631 @@ assignmentsPublic.get("/leaderboard/:code", async (c) => {
         att_pct: a.total ? attPct : null,
         hw_done: hw,
         xp,
+        cosmetics: cosMap.get(p.id) || { banner: "default_navy", frame: "none", avatar: "initials", title: "" },
       };
     })
     .sort((a: any, b: any) => b.xp - a.xp || (b.avg_test || 0) - (a.avg_test || 0) || a.name.localeCompare(b.name))
     .map((row: any, idx: number) => ({ ...row, rank: idx + 1 }));
 
   const me = ranked.find((r: any) => r.is_me) || null;
+  const custom_items = await loadCustomShopItems(c.env.DB);
   return c.json({
+    custom_items,
     group_name: st.group_name || "Umumiy",
     my_rank: me?.rank || null,
     total_students: ranked.length,
     top10: ranked.slice(0, 10),
     me,
+  });
+});
+
+
+const SHOP_ITEMS: Record<string, { slot: "banner" | "frame" | "avatar" | "title"; price: number }> = {
+  default_navy: { slot: "banner", price: 0 },
+  cyber_neon: { slot: "banner", price: 120 },
+  emerald_matrix: { slot: "banner", price: 150 },
+  solar_flare: { slot: "banner", price: 220 },
+  cosmic_aurora: { slot: "banner", price: 300 },
+  royal_gold: { slot: "banner", price: 450 },
+  none: { slot: "frame", price: 0 },
+  emerald_glow: { slot: "frame", price: 80 },
+  cyber_cyan: { slot: "frame", price: 140 },
+  fire_ring: { slot: "frame", price: 200 },
+  galaxy_spin: { slot: "frame", price: 320 },
+  gold_crown: { slot: "frame", price: 500 },
+  initials: { slot: "avatar", price: 0 },
+  coder: { slot: "avatar", price: 60 },
+  astronaut: { slot: "avatar", price: 90 },
+  ninja: { slot: "avatar", price: 120 },
+  robot: { slot: "avatar", price: 150 },
+  lion: { slot: "avatar", price: 180 },
+  wizard: { slot: "avatar", price: 220 },
+  dragon: { slot: "avatar", price: 300 },
+  crown: { slot: "avatar", price: 400 },
+  "": { slot: "title", price: 0 },
+  kod_ustasi: { slot: "title", price: 100 },
+  snayper: { slot: "title", price: 140 },
+  olimpiadachi: { slot: "title", price: 220 },
+  kiber_qahramon: { slot: "title", price: 280 },
+  afsona: { slot: "title", price: 450 },
+};
+
+const WEEKLY_REWARDS = [5, 5, 8, 10, 12, 15, 30];
+
+function uzTodayDate(): string {
+  // Uzbekistan UTC+5
+  const d = new Date(Date.now() + 5 * 3600 * 1000);
+  return d.toISOString().slice(0, 10);
+}
+
+function uzYesterdayDate(): string {
+  const d = new Date(Date.now() + 5 * 3600 * 1000 - 86400 * 1000);
+  return d.toISOString().slice(0, 10);
+}
+
+function uzTodayStartSec(): number {
+  const today = uzTodayDate();
+  return Math.floor(new Date(today + "T00:00:00+05:00").getTime() / 1000);
+}
+
+function seedHash(str: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+async function loadCustomShopItems(db: any) {
+  try {
+    return await rows(
+      db,
+      "SELECT id, slot, name, description, price, rarity, image_url, title_text FROM shop_items_custom WHERE active=1 ORDER BY created_at DESC LIMIT 200",
+    );
+  } catch {
+    return [];
+  }
+}
+
+async function resolveShopItem(db: any, itemId: string): Promise<{ slot: "banner" | "frame" | "avatar" | "title"; price: number } | null> {
+  if (SHOP_ITEMS[itemId]) return SHOP_ITEMS[itemId];
+  try {
+    const r = await first(
+      db,
+      "SELECT slot, price FROM shop_items_custom WHERE id=? AND active=1",
+      itemId,
+    );
+    if (r) return { slot: r.slot, price: Number(r.price || 0) };
+  } catch {}
+  return null;
+}
+
+async function computeEarnedCoins(db: any, st: any) {
+  const att = await first(
+    db,
+    `SELECT COUNT(*) total_days,
+            SUM(CASE WHEN status IN ('present','late') THEN 1 ELSE 0 END) good_days
+     FROM attendance_records WHERE tenant_id=? AND student_id=?`,
+    st.tenant_id,
+    st.id,
+  );
+  const attemptRows = await rows(
+    db,
+    `SELECT a.percentage, c.settings_json
+     FROM attempts a LEFT JOIN cards c ON c.id = a.card_id
+     WHERE a.tenant_id=? AND a.student_id=? AND a.status='submitted'`,
+    st.tenant_id,
+    st.id,
+  );
+  let testCoinsSum = 0;
+  let pctSum = 0;
+  for (const ar of attemptRows) {
+    const pct = Number(ar.percentage || 0);
+    pctSum += pct;
+    let cfg: any = {};
+    try { cfg = JSON.parse(ar.settings_json || "{}"); } catch {}
+    const passed = pct >= Number(cfg.pass_percent ?? 70);
+    const custom = Number(cfg.reward_coins || 0);
+    if (passed && custom > 0) {
+      testCoinsSum += custom;
+    } else {
+      const base = pct >= 100 ? 40 : pct >= 90 ? 30 : pct >= 70 ? 20 : 10;
+      const mult = Number(cfg.mix?.hard || 0) >= 50 ? 1.5 : Number(cfg.mix?.medium || 0) >= 50 ? 1.25 : 1;
+      testCoinsSum += Math.round(base * mult);
+    }
+  }
+  const tst = {
+    tests_taken: attemptRows.length,
+    avg_pct: attemptRows.length ? Math.round((pctSum / attemptRows.length) * 10) / 10 : 0,
+    test_coins: testCoinsSum,
+  };
+  const hw = await first(
+    db,
+    `SELECT COUNT(*) hw_done,
+            SUM(CASE WHEN s.status='graded' AND a.max_score > 0 AND (s.score * 100.0 / a.max_score) >= 80 THEN 35 ELSE 20 END) hw_coins
+     FROM assignment_submissions s
+     LEFT JOIN assignments a ON a.id = s.assignment_id
+     WHERE s.tenant_id=? AND s.student_id=?`,
+    st.tenant_id,
+    st.id,
+  );
+  const totalDays = Number(att?.total_days || 0);
+  const goodDays = Number(att?.good_days || 0);
+  const attPct = totalDays ? Math.round((goodDays / totalDays) * 100) : 0;
+  const taken = Number(tst?.tests_taken || 0);
+  const avg = Number(tst?.avg_pct || 0);
+  const hwDone = Number(hw?.hw_done || 0);
+  const xp = Math.round(avg * 5 + attPct * 2 + hwDone * 30 + taken * 10);
+  // Strictly merit-based: 0 coins if student hasn't completed tests or homework!
+  const testCoins = Number(tst?.test_coins || 0);
+  const hwCoins = Number(hw?.hw_coins || 0);
+  const baseEarned = testCoins + hwCoins;
+  return { xp, baseEarned };
+}
+
+async function getCosmeticsRow(db: any, studentId: string) {
+  try {
+    const r = await first(
+      db,
+      "SELECT * FROM student_cosmetics WHERE student_id=?",
+      studentId,
+    );
+    if (r) {
+      let owned: string[] = [];
+      let dq: { date?: string; claimed?: string[]; practice_done_date?: string; book_done_date?: string; game_done_date?: string } = {};
+      try { owned = JSON.parse(r.owned_json || "[]"); } catch {}
+      try { dq = JSON.parse(r.daily_quests_json || "{}"); } catch {}
+      return {
+        equipped: {
+          banner: r.equipped_banner || "default_navy",
+          frame: r.equipped_frame || "none",
+          avatar: r.equipped_avatar || "initials",
+          title: r.equipped_title || "",
+        },
+        owned,
+        spent_coins: Number(r.spent_coins || 0),
+        bonus_coins: Number(r.bonus_coins || 0),
+        streak_days: Number(r.streak_days || 0),
+        last_checkin_date: String(r.last_checkin_date || ""),
+        daily_quests: dq,
+      };
+    }
+  } catch {}
+  return {
+    equipped: { banner: "default_navy", frame: "none", avatar: "initials", title: "" },
+    owned: [] as string[],
+    spent_coins: 0,
+    bonus_coins: 0,
+    streak_days: 0,
+    last_checkin_date: "",
+    daily_quests: {} as { date?: string; claimed?: string[]; practice_done_date?: string; book_done_date?: string; game_done_date?: string },
+  };
+}
+
+// Build 3 personalized daily random quests based on student's teacher/group direction + global DB
+async function buildDailyQuests(db: any, st: any, cos: any) {
+  const today = uzTodayDate();
+  const todayStart = uzTodayStartSec();
+  const claimed: string[] = cos.daily_quests?.date === today ? (cos.daily_quests?.claimed || []) : [];
+  const seed = seedHash(`${st.id}:${today}`);
+
+  // Detect student's primary subject/direction from group name, teacher's question categories, and cards
+  const groupHint = String(st.group_name || "").toLowerCase();
+  let topCat = "";
+  try {
+    const catRow = await first(
+      db,
+      `SELECT category, COUNT(*) cnt FROM questions WHERE tenant_id=? AND category != '' GROUP BY category ORDER BY cnt DESC LIMIT 1`,
+      st.tenant_id,
+    );
+    topCat = String(catRow?.category || "");
+  } catch {}
+
+  // Check if student completed a test today
+  let testsToday = 0;
+  try {
+    const tRow = await first(
+      db,
+      `SELECT COUNT(*) cnt FROM attempts WHERE tenant_id=? AND student_id=? AND status='submitted' AND submitted_at>=?`,
+      st.tenant_id,
+      st.id,
+      todayStart,
+    );
+    testsToday = Number(tRow?.cnt || 0);
+  } catch {}
+
+  // Pick a relevant active test card (teacher's active cards first, else public practice)
+  let pickedCard: any = null;
+  try {
+    const teacherCards = await rows(
+      db,
+      `SELECT slug, title, category FROM cards WHERE tenant_id=? AND status='active' ORDER BY created_at DESC LIMIT 12`,
+      st.tenant_id,
+    );
+    if (teacherCards.length) {
+      pickedCard = teacherCards[seed % teacherCards.length];
+    }
+  } catch {}
+
+  // Pick a relevant library book matching teacher/group direction or random approved book
+  let pickedBook: any = null;
+  try {
+    const books = await rows(
+      db,
+      `SELECT id, title, subject FROM library_books WHERE status='approved' OR tenant_id=? ORDER BY created_at DESC LIMIT 20`,
+      st.tenant_id,
+    );
+    if (books.length) {
+      const matched = books.filter((b: any) => {
+        const sub = String(b.subject || b.title || "").toLowerCase();
+        return (
+          (topCat && sub.includes(topCat.toLowerCase().slice(0, 4))) ||
+          (groupHint.includes("it") && (sub.includes("kompyuter") || sub.includes("excel") || sub.includes("kiber") || sub.includes("it")))
+        );
+      });
+      const pool = matched.length ? matched : books;
+      pickedBook = pool[(seed >>> 3) % pool.length];
+    }
+  } catch {}
+
+  // Pick a game from games hub (if any published)
+  let pickedGame: any = null;
+  try {
+    const games = await rows(
+      db,
+      `SELECT id, title FROM games WHERE status='published' ORDER BY sort_order ASC, created_at DESC LIMIT 12`,
+    );
+    if (games.length) {
+      pickedGame = games[(seed >>> 5) % games.length];
+    }
+  } catch {}
+
+  const subjectLabel = topCat || st.group_name || "Yo‘nalishingiz";
+  const quests = [
+    {
+      id: "q_test",
+      icon: "🎯",
+      title: pickedCard
+        ? `«${pickedCard.title}» testini yeching`
+        : `${subjectLabel} bo‘yicha kamida 5 ta test yeching`,
+      desc: pickedCard
+        ? "O‘qituvchingiz bazasidan bugungi tanlangan test"
+        : "Ochiq mashq testlaridan yo‘nalishingizga mos savollar",
+      reward: 25,
+      link: pickedCard ? `/t/${encodeURIComponent(pickedCard.slug)}` : "/practice",
+      link_label: "Testga o‘tish",
+      auto_done: testsToday > 0 || cos.daily_quests?.practice_done_date === today,
+      claimed: claimed.includes("q_test"),
+    },
+    {
+      id: "q_book",
+      icon: "📖",
+      title: pickedBook
+        ? `«${pickedBook.title}» kitobidan 1 bob o‘qing`
+        : "Kutubxonadan 1 ta foydali bob o‘qing",
+      desc: "Yo‘nalishingizga mos raqamli kutubxona topshirig‘i",
+      reward: 10,
+      link: pickedBook ? `/library/${encodeURIComponent(pickedBook.id)}` : "/library",
+      link_label: "Kitobni ochish",
+      auto_done: cos.daily_quests?.book_done_date === today,
+      claimed: claimed.includes("q_book"),
+    },
+    {
+      id: "q_game",
+      icon: "🎮",
+      title: pickedGame
+        ? `«${pickedGame.title}» o‘yinida 1 raund o‘ynang`
+        : "O‘yinlar markazida bilim bellashuvini sinab ko‘ring",
+      desc: "Tezkor fikrlash va xotirani mustahkamlash uchun o‘yin topshirig‘i",
+      reward: 15,
+      link: pickedGame ? `/games/${encodeURIComponent(pickedGame.id)}` : "/games",
+      link_label: "O‘yinga kirish",
+      auto_done: cos.daily_quests?.game_done_date === today,
+      claimed: claimed.includes("q_game"),
+    },
+  ];
+
+  return { today, subject_label: subjectLabel, quests };
+}
+
+assignmentsPublic.get("/shop/:code", async (c) => {
+  const rawCode = c.req.param("code") || "";
+  if (rawCode === "__empty__") {
+    return c.json({
+      xp: 0,
+      earned_coins: 0,
+      spent_coins: 0,
+      balance: 0,
+      equipped: { banner: "default_navy", frame: "none", avatar: "initials", title: "" },
+      owned: [],
+      streak_days: 0,
+      checked_in_today: false,
+      next_reward: WEEKLY_REWARDS[0],
+      daily_quests: [],
+      subject_label: "",
+    });
+  }
+  await rate(c, "student-shop", 240, 60);
+  const st = await findStudentByCode(c.env.DB, rawCode);
+  if (!st) fail("O‘quvchi kodi topilmadi", 404);
+  const { xp, baseEarned } = await computeEarnedCoins(c.env.DB, st);
+  const cos = await getCosmeticsRow(c.env.DB, st.id);
+  const today = uzTodayDate();
+  const yesterday = uzYesterdayDate();
+  const checkedInToday = cos.last_checkin_date === today;
+  const effectiveStreak =
+    checkedInToday || cos.last_checkin_date === yesterday ? cos.streak_days : 0;
+  const nextDayIdx = checkedInToday ? (effectiveStreak - 1) % 7 : effectiveStreak % 7;
+  const earnedTotal = baseEarned + cos.bonus_coins;
+  const dq = await buildDailyQuests(c.env.DB, st, cos);
+  const custom_items = await loadCustomShopItems(c.env.DB);
+
+  return c.json({
+    custom_items,
+    xp,
+    earned_coins: earnedTotal,
+    spent_coins: cos.spent_coins,
+    balance: Math.max(0, earnedTotal - cos.spent_coins),
+    equipped: cos.equipped,
+    owned: cos.owned,
+    streak_days: effectiveStreak,
+    checked_in_today: checkedInToday,
+    next_reward: WEEKLY_REWARDS[nextDayIdx],
+    daily_quests: dq.quests,
+    subject_label: dq.subject_label,
+  });
+});
+
+assignmentsPublic.post("/shop/:code/checkin", async (c) => {
+  await rate(c, "student-checkin", 120, 60);
+  const st = await findStudentByCode(c.env.DB, c.req.param("code") || "");
+  if (!st) fail("O‘quvchi kodi topilmadi", 404);
+  const cos = await getCosmeticsRow(c.env.DB, st.id);
+  const today = uzTodayDate();
+  const yesterday = uzYesterdayDate();
+  if (cos.last_checkin_date === today) {
+    fail("Bugungi kunlik sovg‘ani allaqachon olgansiz", 400);
+  }
+  const nextStreak = cos.last_checkin_date === yesterday ? cos.streak_days + 1 : 1;
+  const dayIdx = (nextStreak - 1) % 7;
+  const reward = WEEKLY_REWARDS[dayIdx];
+  const nextBonus = cos.bonus_coins + reward;
+
+  await stmt(
+    c.env.DB,
+    `INSERT INTO student_cosmetics
+      (student_id, equipped_banner, equipped_frame, equipped_avatar, equipped_title, owned_json, spent_coins, bonus_coins, streak_days, last_checkin_date, daily_quests_json, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(student_id) DO UPDATE SET
+      bonus_coins=excluded.bonus_coins,
+      streak_days=excluded.streak_days,
+      last_checkin_date=excluded.last_checkin_date,
+      updated_at=excluded.updated_at`,
+    st.id,
+    cos.equipped.banner,
+    cos.equipped.frame,
+    cos.equipped.avatar,
+    cos.equipped.title,
+    JSON.stringify(cos.owned),
+    cos.spent_coins,
+    nextBonus,
+    nextStreak,
+    today,
+    JSON.stringify(cos.daily_quests || {}),
+    now(),
+  ).run();
+
+  return c.json({ ok: true, reward, streak_days: nextStreak });
+});
+
+assignmentsPublic.post("/shop/:code/quest-visit", async (c) => {
+  await rate(c, "student-quest", 180, 60);
+  const st = await findStudentByCode(c.env.DB, c.req.param("code") || "");
+  if (!st) fail("O‘quvchi kodi topilmadi", 404);
+  const d = await body(c, z.object({ quest_id: z.enum(["q_book", "q_game"]) }).strict());
+  const cos = await getCosmeticsRow(c.env.DB, st.id);
+  const today = uzTodayDate();
+  const nextDq: any = { ...(cos.daily_quests || {}) };
+  if (d.quest_id === "q_book") nextDq.book_done_date = today;
+  if (d.quest_id === "q_game") nextDq.game_done_date = today;
+  await stmt(
+    c.env.DB,
+    `INSERT INTO student_cosmetics
+      (student_id, equipped_banner, equipped_frame, equipped_avatar, equipped_title, owned_json, spent_coins, bonus_coins, streak_days, last_checkin_date, daily_quests_json, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(student_id) DO UPDATE SET daily_quests_json=excluded.daily_quests_json, updated_at=excluded.updated_at`,
+    st.id,
+    cos.equipped.banner,
+    cos.equipped.frame,
+    cos.equipped.avatar,
+    cos.equipped.title,
+    JSON.stringify(cos.owned),
+    cos.spent_coins,
+    cos.bonus_coins,
+    cos.streak_days,
+    cos.last_checkin_date,
+    JSON.stringify(nextDq),
+    now(),
+  ).run();
+  return c.json({ ok: true });
+});
+
+assignmentsPublic.post("/shop/:code/quest-claim", async (c) => {
+  await rate(c, "student-quest", 120, 60);
+  const st = await findStudentByCode(c.env.DB, c.req.param("code") || "");
+  if (!st) fail("O‘quvchi kodi topilmadi", 404);
+  const d = await body(c, z.object({ quest_id: z.enum(["q_test", "q_book", "q_game"]) }).strict());
+  const cos = await getCosmeticsRow(c.env.DB, st.id);
+  const today = uzTodayDate();
+  const prevClaimed: string[] = cos.daily_quests?.date === today ? (cos.daily_quests?.claimed || []) : [];
+  if (prevClaimed.includes(d.quest_id)) {
+    fail("Bu quest mukofotini bugun allaqachon olgansiz", 400);
+  }
+  if (d.quest_id === "q_test") {
+    const tRow = await first(
+      c.env.DB,
+      `SELECT COUNT(*) cnt FROM attempts WHERE tenant_id=? AND student_id=? AND status='submitted' AND submitted_at>=?`,
+      st.tenant_id,
+      st.id,
+      uzTodayStartSec(),
+    );
+    const practicedToday = cos.daily_quests?.practice_done_date === today;
+    if (!Number(tRow?.cnt || 0) && !practicedToday) {
+      fail("Avval bugun kamida 1 ta test yechib yakunlang!", 400);
+    }
+  }
+  if (d.quest_id === "q_book" && cos.daily_quests?.book_done_date !== today) {
+    fail("Avval «Kitobni ochish ↗» orqali kitobga kirib o‘qing!", 400);
+  }
+  if (d.quest_id === "q_game" && cos.daily_quests?.game_done_date !== today) {
+    fail("Avval «O‘yinga kirish ↗» orqali o‘yinga kirib o‘ynang!", 400);
+  }
+  const rewardsMap: Record<string, number> = { q_test: 25, q_book: 10, q_game: 15 };
+  const reward = rewardsMap[d.quest_id] || 30;
+  const nextDq = { date: today, claimed: [...prevClaimed, d.quest_id] };
+  const nextBonus = cos.bonus_coins + reward;
+
+  await stmt(
+    c.env.DB,
+    `INSERT INTO student_cosmetics
+      (student_id, equipped_banner, equipped_frame, equipped_avatar, equipped_title, owned_json, spent_coins, bonus_coins, streak_days, last_checkin_date, daily_quests_json, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(student_id) DO UPDATE SET
+      bonus_coins=excluded.bonus_coins,
+      daily_quests_json=excluded.daily_quests_json,
+      updated_at=excluded.updated_at`,
+    st.id,
+    cos.equipped.banner,
+    cos.equipped.frame,
+    cos.equipped.avatar,
+    cos.equipped.title,
+    JSON.stringify(cos.owned),
+    cos.spent_coins,
+    nextBonus,
+    cos.streak_days,
+    cos.last_checkin_date,
+    JSON.stringify(nextDq),
+    now(),
+  ).run();
+
+  return c.json({ ok: true, reward, quest_id: d.quest_id });
+});
+
+assignmentsPublic.post("/shop/:code/buy", async (c) => {
+  await rate(c, "student-shop-buy", 120, 60);
+  const st = await findStudentByCode(c.env.DB, c.req.param("code") || "");
+  if (!st) fail("O‘quvchi kodi topilmadi", 404);
+  const d = await body(c, z.object({ item_id: z.string().max(64) }).strict());
+  const item = await resolveShopItem(c.env.DB, d.item_id);
+  if (!item) fail("Do‘konda bunday buyum topilmadi", 404);
+
+  const { xp, baseEarned } = await computeEarnedCoins(c.env.DB, st);
+  const cos = await getCosmeticsRow(c.env.DB, st.id);
+  const earnedTotal = baseEarned + cos.bonus_coins;
+  const alreadyOwned = item.price === 0 || cos.owned.includes(d.item_id);
+  const balance = Math.max(0, earnedTotal - cos.spent_coins);
+
+  if (!alreadyOwned && balance < item.price) {
+    fail(`Bilim Coin yetarli emas (kerak: ${item.price}, sizda: ${balance})`, 400);
+  }
+
+  const nextOwned = alreadyOwned ? cos.owned : [...cos.owned, d.item_id];
+  const nextSpent = alreadyOwned ? cos.spent_coins : cos.spent_coins + item.price;
+  const nextEq = { ...cos.equipped, [item.slot]: d.item_id };
+
+  await stmt(
+    c.env.DB,
+    `INSERT INTO student_cosmetics
+      (student_id, equipped_banner, equipped_frame, equipped_avatar, equipped_title, owned_json, spent_coins, bonus_coins, streak_days, last_checkin_date, daily_quests_json, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(student_id) DO UPDATE SET
+      equipped_banner=excluded.equipped_banner,
+      equipped_frame=excluded.equipped_frame,
+      equipped_avatar=excluded.equipped_avatar,
+      equipped_title=excluded.equipped_title,
+      owned_json=excluded.owned_json,
+      spent_coins=excluded.spent_coins,
+      updated_at=excluded.updated_at`,
+    st.id,
+    nextEq.banner,
+    nextEq.frame,
+    nextEq.avatar,
+    nextEq.title,
+    JSON.stringify(nextOwned),
+    nextSpent,
+    cos.bonus_coins,
+    cos.streak_days,
+    cos.last_checkin_date,
+    JSON.stringify(cos.daily_quests || {}),
+    now(),
+  ).run();
+
+  return c.json({
+    ok: true,
+    xp,
+    earned_coins: earnedTotal,
+    spent_coins: nextSpent,
+    balance: Math.max(0, earnedTotal - nextSpent),
+    equipped: nextEq,
+    owned: nextOwned,
+  });
+});
+
+assignmentsPublic.post("/shop/:code/equip", async (c) => {
+  await rate(c, "student-shop-equip", 120, 60);
+  const st = await findStudentByCode(c.env.DB, c.req.param("code") || "");
+  if (!st) fail("O‘quvchi kodi topilmadi", 404);
+  const d = await body(
+    c,
+    z.object({
+      slot: z.enum(["banner", "frame", "avatar", "title"]),
+      item_id: z.string().max(64),
+    }).strict(),
+  );
+  const item = await resolveShopItem(c.env.DB, d.item_id);
+  if (!item || item.slot !== d.slot) fail("Buyum noto‘g‘ri tanlandi", 400);
+
+  const { xp, baseEarned } = await computeEarnedCoins(c.env.DB, st);
+  const cos = await getCosmeticsRow(c.env.DB, st.id);
+  const earnedTotal = baseEarned + cos.bonus_coins;
+  if (item.price > 0 && !cos.owned.includes(d.item_id)) {
+    fail("Avval ushbu buyumni sotib oling", 403);
+  }
+  const nextEq = { ...cos.equipped, [d.slot]: d.item_id };
+
+  await stmt(
+    c.env.DB,
+    `INSERT INTO student_cosmetics
+      (student_id, equipped_banner, equipped_frame, equipped_avatar, equipped_title, owned_json, spent_coins, bonus_coins, streak_days, last_checkin_date, daily_quests_json, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(student_id) DO UPDATE SET
+      equipped_banner=excluded.equipped_banner,
+      equipped_frame=excluded.equipped_frame,
+      equipped_avatar=excluded.equipped_avatar,
+      equipped_title=excluded.equipped_title,
+      updated_at=excluded.updated_at`,
+    st.id,
+    nextEq.banner,
+    nextEq.frame,
+    nextEq.avatar,
+    nextEq.title,
+    JSON.stringify(cos.owned),
+    cos.spent_coins,
+    cos.bonus_coins,
+    cos.streak_days,
+    cos.last_checkin_date,
+    JSON.stringify(cos.daily_quests || {}),
+    now(),
+  ).run();
+
+  return c.json({
+    ok: true,
+    xp,
+    earned_coins: earnedTotal,
+    spent_coins: cos.spent_coins,
+    balance: Math.max(0, earnedTotal - cos.spent_coins),
+    equipped: nextEq,
+    owned: cos.owned,
   });
 });

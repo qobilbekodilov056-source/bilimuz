@@ -53,9 +53,9 @@ export function GamesCatalogPage() {
 
   return (
     <div className="exam-join lib-page">
-      <Link to="/" className="back-link">
+      <Link to="/" onClick={(e) => { if (window.history.length > 1) { e.preventDefault(); window.history.back(); } }} className="back-link">
         <ArrowLeft size={17} />
-        Bosh sahifa
+        Orqaga
       </Link>
 
       <div className="panel lib-hero">

@@ -1,0 +1,10 @@
+CREATE TABLE IF NOT EXISTS billing_keys (
+  id TEXT PRIMARY KEY,
+  code TEXT NOT NULL UNIQUE,
+  plan TEXT NOT NULL CHECK(plan IN ('pro','center')),
+  days INTEGER NOT NULL DEFAULT 30,
+  max_uses INTEGER NOT NULL DEFAULT 1,
+  used_count INTEGER NOT NULL DEFAULT 0,
+  note TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL
+);

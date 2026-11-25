@@ -2,6 +2,8 @@ import { useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, ArrowRight, Award, CalendarDays, Search } from "lucide-react";
 import { Busy, Empty, ErrorBox, Field, Pill, useData } from "./ui";
+import { openCertificatePrint } from "./cert-pdf";
+import { useConfig } from "./main";
 
 const ATT_LABEL: Record<string, { text: string; tone: "green" | "amber" | "red" | "blue" }> = {
   present: { text: "Keldi (+)", tone: "green" },
@@ -11,6 +13,7 @@ const ATT_LABEL: Record<string, { text: string; tone: "green" | "amber" | "red" 
 };
 
 export function ParentPortal() {
+  const cfg = useConfig();
   const { code = "" } = useParams();
   const navigate = useNavigate();
   const [inputCode, setInputCode] = useState(code);
@@ -45,14 +48,26 @@ export function ParentPortal() {
   return (
     <div className="exam-join parent-page">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
-        <Link to="/" className="back-link" style={{ margin: 0 }}>
+        <Link to="/" onClick={(e) => { if (window.history.length > 1) { e.preventDefault(); window.history.back(); } }} className="back-link" style={{ margin: 0 }}>
           <ArrowLeft size={17} />
-          Bosh sahifa
+          Orqaga
         </Link>
         {activeCode && (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {cfg.tg_bot_username && (
+            <a
+              href={"https://t.me/" + encodeURIComponent(cfg.tg_bot_username) + "?start=" + encodeURIComponent(activeCode)}
+              target="_blank"
+              rel="noreferrer"
+              className="btn primary tiny"
+            >
+              🤖 Telegram xabarnoma ulash
+            </a>
+          )}
           <Link to={"/vazifalar/" + encodeURIComponent(activeCode)} className="btn secondary tiny">
             Uyga vazifalar <ArrowRight size={14} />
           </Link>
+          </div>
         )}
       </div>
 
@@ -189,6 +204,7 @@ export function ParentPortal() {
                       <th>Holat</th>
                       <th>Yutuq / Chegirma</th>
                       <th>Nazorat</th>
+                      <th>Sertifikat</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -232,6 +248,31 @@ export function ParentPortal() {
                           ) : (
                             <Pill tone="green">Toza</Pill>
                           )}
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            className="btn secondary tiny"
+                            onClick={() =>
+                              openCertificatePrint({
+                                studentName: d.student?.name || "O‘quvchi",
+                                studentCode: d.student?.student_code || activeCode,
+                                groupName: d.student?.group_name || "",
+                                tenantName: d.student?.tenant_name || "",
+                                testTitle: t.card_title || "Onlayn test",
+                                category: t.card_category || "",
+                                percentage: Number(t.percentage || 0),
+                                score: Number(t.score || 0),
+                                maxScore: Number(t.max_score || 0),
+                                passed: !!t.passed || Number(t.percentage || 0) >= 70,
+                                reward: t.reward || "",
+                                dateText: new Date(Number(t.submitted_at || Date.now() / 1000) * 1000).toLocaleDateString("uz-UZ"),
+                                certCode: "BUZ-" + String(d.student?.student_code || activeCode || "CERT").slice(0, 6) + "-" + String(t.id || "01").slice(0, 4).toUpperCase(),
+                              })
+                            }
+                          >
+                            🏅 PDF
+                          </button>
                         </td>
                       </tr>
                     ))}

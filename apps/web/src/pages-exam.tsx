@@ -14,6 +14,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { api, uuidToken, ApiError } from "./api";
+import { openCertificatePrint } from "./cert-pdf";
 import { Busy, ErrorBox, Field, Modal, Pill, useData } from "./ui";
 type Answer = {
   position: number;
@@ -938,152 +939,7 @@ function escHtml(v: string) {
     .replace(/"/g, "&quot;");
 }
 
-function openCertificatePrint(c: CertInfo) {
-  const win = window.open("", "_blank", "width=1120,height=790");
-  if (!win) {
-    alert("Brauzerda pop-up oynalarga ruxsat bering (sertifikatni chop etish uchun).");
-    return;
-  }
-  const heading = c.passed ? "SERTIFIKAT" : "NATIJA VARAQASI";
-  const badgeText = c.passed ? "MUVAFFAQIYATLI TOPSHIRDI" : "TEST NATIJASI";
-  const accent = c.passed ? "#0f5132" : "#1e3a8a";
-  const gold = "#c89b3c";
-  const logoUrl = location.origin + "/logo.png";
 
-  const html = `<!doctype html>
-<html lang="uz">
-<head>
-<meta charset="utf-8" />
-<title>${escHtml(heading)} — ${escHtml(c.studentName)}</title>
-<style>
-  @page { size: A4 landscape; margin: 0; }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0; padding: 24px; background: #eef2f6;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Georgia, sans-serif;
-    display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh;
-  }
-  .toolbar {
-    margin-bottom: 14px; display: flex; gap: 10px;
-  }
-  .toolbar button {
-    padding: 10px 18px; border-radius: 8px; border: 0; cursor: pointer;
-    font-weight: 600; font-size: 14px; background: ${accent}; color: #fff;
-  }
-  .sheet {
-    width: 1050px; height: 742px; background: #ffffff; position: relative;
-    padding: 34px; box-shadow: 0 20px 50px rgba(15, 23, 42, 0.16);
-    display: flex; flex-direction: column;
-  }
-  .frame {
-    flex: 1; border: 3px solid ${accent}; padding: 10px; display: flex; flex-direction: column;
-  }
-  .inner {
-    flex: 1; border: 1.5px solid ${gold}; padding: 34px 48px;
-    display: flex; flex-direction: column; justify-content: space-between; text-align: center;
-    background: radial-gradient(circle at top right, rgba(200,155,60,0.08), transparent 45%),
-                radial-gradient(circle at bottom left, rgba(15,81,50,0.07), transparent 45%);
-  }
-  .top { display: flex; align-items: center; justify-content: space-between; }
-  .brand { display: flex; align-items: center; gap: 12px; text-align: left; }
-  .brand img { width: 46px; height: 46px; border-radius: 10px; object-fit: cover; }
-  .brand strong { display: block; font-size: 20px; color: #0f172a; letter-spacing: 0.4px; }
-  .brand small { font-size: 11px; color: #64748b; letter-spacing: 1px; }
-  .code { font-size: 12px; color: #64748b; text-align: right; }
-  .code strong { display: block; color: #0f172a; font-family: monospace; font-size: 14px; }
-  .badge {
-    display: inline-block; margin: 10px auto 8px; padding: 6px 16px; border-radius: 999px;
-    background: ${c.passed ? "#dcfce7" : "#dbeafe"}; color: ${accent};
-    font-size: 12px; font-weight: 700; letter-spacing: 1.6px;
-  }
-  h1 {
-    margin: 4px 0 8px; font-size: 46px; letter-spacing: 5px; color: ${accent};
-    font-family: Georgia, "Times New Roman", serif;
-  }
-  .lead { margin: 4px 0; font-size: 15px; color: #475569; }
-  .student {
-    margin: 10px auto 6px; font-size: 36px; font-weight: 800; color: #0f172a;
-    border-bottom: 2px solid ${gold}; display: inline-block; padding: 0 28px 6px;
-  }
-  .subtitle { font-size: 14px; color: #64748b; margin: 4px 0 12px; }
-  .test-title { font-size: 21px; font-weight: 700; color: #1e293b; margin: 8px 0 4px; }
-  .category { font-size: 13px; color: #64748b; margin-bottom: 14px; }
-  .metrics {
-    display: flex; justify-content: center; gap: 18px; margin: 10px 0 14px;
-  }
-  .metric {
-    min-width: 148px; padding: 12px 16px; border-radius: 12px;
-    border: 1px solid #e2e8f0; background: #f8fafc;
-  }
-  .metric strong { display: block; font-size: 24px; color: ${accent}; }
-  .metric span { font-size: 12px; color: #64748b; }
-  .reward {
-    margin: 4px auto 0; padding: 8px 18px; border-radius: 10px;
-    background: #fef3c7; border: 1px solid #fcd34d; color: #78350f;
-    font-size: 13px; display: inline-block;
-  }
-  .footer {
-    display: flex; align-items: flex-end; justify-content: space-between;
-    padding-top: 14px; border-top: 1px solid #e2e8f0; font-size: 12px; color: #64748b;
-  }
-  .footer strong { color: #0f172a; }
-  @media print {
-    body { padding: 0; background: #fff; }
-    .toolbar { display: none; }
-    .sheet { box-shadow: none; width: 297mm; height: 210mm; padding: 10mm; }
-  }
-</style>
-</head>
-<body>
-  <div class="toolbar">
-    <button onclick="window.print()">PDF sifatida saqlash / Chop etish</button>
-  </div>
-  <div class="sheet">
-    <div class="frame">
-      <div class="inner">
-        <div class="top">
-          <div class="brand">
-            <img src="${logoUrl}" alt="Bilim UZ" onerror="this.style.display='none'" />
-            <div>
-              <strong>Bilim UZ</strong>
-              <small>ONLAYN TEST PLATFORMASI</small>
-            </div>
-          </div>
-          <div class="code">
-            <span>Hujjat kodi</span>
-            <strong>${escHtml(c.certCode)}</strong>
-          </div>
-        </div>
-        <div>
-          <div class="badge">${badgeText}</div>
-          <h1>${heading}</h1>
-          <p class="lead">Ushbu hujjat quyidagi ishtirokchining test natijasini tasdiqlaydi:</p>
-          <div class="student">${escHtml(c.studentName)}</div>
-          ${c.subtitle ? `<div class="subtitle">${escHtml(c.subtitle)}</div>` : ""}
-          <div class="test-title">${escHtml(c.testTitle)}</div>
-          ${c.category ? `<div class="category">Yo‘nalish: ${escHtml(c.category)}</div>` : ""}
-          <div class="metrics">
-            <div class="metric"><strong>${c.percentage}%</strong><span>Umumiy natija</span></div>
-            <div class="metric"><strong>${c.score} / ${c.maxScore}</strong><span>To‘plangan ball</span></div>
-            <div class="metric"><strong>${c.correct} / ${c.correct + c.incorrect + c.unanswered}</strong><span>To‘g‘ri javoblar</span></div>
-          </div>
-          ${c.passed && c.reward ? `<div class="reward"><strong>🏆 Yutuq:</strong> ${escHtml(c.reward)}</div>` : ""}
-        </div>
-        <div class="footer">
-          <div>Sana: <strong>${escHtml(c.dateText)}</strong></div>
-          <div>bilimuz.dpdns.org</div>
-          <div>Powered by <strong>SysOne</strong></div>
-        </div>
-      </div>
-    </div>
-  </div>
-  <script>setTimeout(() => window.print(), 350);</script>
-</body>
-</html>`;
-  win.document.open();
-  win.document.write(html);
-  win.document.close();
-}
 
 function downloadCertificatePng(c: CertInfo) {
   const canvas = document.createElement("canvas");
@@ -1252,6 +1108,12 @@ function ExamResult({ data, slug }: { data: any; slug: string }) {
         {r.passed && r.reward && (
           <div className="reward-banner">
             <strong>🏆 Tabriklaymiz! Yutuq:</strong> {r.reward}
+          </div>
+        )}
+        {Number(r.earned_coins || 0) > 0 && (
+          <div className="reward-banner" style={{ background: "#fef9e7", borderColor: "#f59e0b", color: "#92400e", marginTop: 10 }}>
+            <strong>+{r.earned_coins} Bilim Coin</strong> hisobingizga qo‘shildi!{" "}
+            <Link to="/student" style={{ fontWeight: 700, color: "#162d3d", marginLeft: 6 }}>Do‘konga o‘tish →</Link>
           </div>
         )}
         <div className="actions" style={{ justifyContent: "center", marginTop: 14 }}>
@@ -1754,6 +1616,14 @@ export function PracticeExam() {
             answers,
             order: pack.data.questions.map((q: any) => q.version_id),
             duration_seconds: duration,
+            student_code: (() => {
+              try {
+                const c = localStorage.getItem("bilimuz_student_code");
+                if (c) return c;
+                const raw = localStorage.getItem("bilimuz_student_session");
+                return raw ? JSON.parse(raw)?.code || "" : "";
+              } catch { return ""; }
+            })(),
           },
         },
       );

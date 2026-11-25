@@ -225,7 +225,7 @@ export async function rate(
     fail("So‘rovlar ko‘paydi. Birozdan keyin qayta urinib ko‘ring.", 429);
   }
 }
-export async function turnstile(c: Ctx, value: string, action: string) {
+export async function turnstile(c: Ctx, value: string, action: string | string[]) {
   if (!c.env.TURNSTILE_SECRET)
     fail("Xavfsizlik tekshiruvi hali sozlanmagan", 503);
   const r = await fetch(
@@ -246,10 +246,11 @@ export async function turnstile(c: Ctx, value: string, action: string) {
     hostname?: string;
     action?: string;
   };
+  const allowed = Array.isArray(action) ? action : [action];
   if (
     !result.success ||
     result.hostname !== new URL(c.env.APP_ORIGIN).hostname ||
-    result.action !== action
+    (result.action && !allowed.includes(result.action))
   )
     fail("Xavfsizlik tekshiruvidan qayta o‘ting", 403);
 }

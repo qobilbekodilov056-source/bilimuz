@@ -8,6 +8,9 @@ import { owner } from "./owner";
 import { exam, finalizeExpired } from "./exam";
 import { libraryPublic } from "./library";
 import { gamesPublic } from "./games";
+import { chatRoutes } from "./chat";
+import { billingWebhook } from "./billing";
+import { tgbotPublic } from "./tgbot";
 import { assignmentsPublic } from "./assignments";
 import {
   fail,
@@ -27,8 +30,8 @@ app.use("*", async (c, next) => {
   if (
     c.env.ENVIRONMENT !== "development" &&
     c.req.method === "GET" &&
-    reqUrl.host !== appUrl.host &&
-    reqUrl.host.endsWith(".workers.dev")
+    ((reqUrl.host !== appUrl.host && reqUrl.host.endsWith(".workers.dev")) ||
+      (reqUrl.host === appUrl.host && appUrl.protocol === "https:" && reqUrl.protocol === "http:"))
   ) {
     return c.redirect(c.env.APP_ORIGIN + reqUrl.pathname + reqUrl.search, 302);
   }
@@ -42,7 +45,7 @@ app.use("*", async (c, next) => {
   c.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
   c.header(
     "Content-Security-Policy",
-    "default-src 'self'; script-src 'self' https://challenges.cloudflare.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://challenges.cloudflare.com https://cloudflareinsights.com; frame-src 'self' https: https://challenges.cloudflare.com; object-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'",
+    "default-src 'self'; script-src 'self' https://challenges.cloudflare.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://challenges.cloudflare.com https://cloudflareinsights.com https://*.firebaseio.com https://*.firebasedatabase.app; frame-src 'self' https: https://challenges.cloudflare.com; object-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'",
   );
   if (c.env.ENVIRONMENT !== "development")
     c.header(
@@ -52,8 +55,10 @@ app.use("*", async (c, next) => {
   if (c.req.path.startsWith("/api/")) c.header("Cache-Control", "no-store");
   if (!["GET", "HEAD", "OPTIONS"].includes(c.req.method)) {
     if (
-      c.req.header("origin") !== c.env.APP_ORIGIN ||
-      c.req.header("x-requested-with") !== "XMLHttpRequest"
+      c.req.path !== "/api/v2/billing/auto-webhook" &&
+      c.req.path !== "/api/v2/tgbot/webhook" &&
+      (!([c.env.APP_ORIGIN, `http://${appUrl.host}`].includes(c.req.header("origin") || "")) ||
+        c.req.header("x-requested-with") !== "XMLHttpRequest")
     )
       fail("So‘rov manbasi tasdiqlanmadi", 403);
     const length = Number(c.req.header("content-length"));
@@ -126,6 +131,9 @@ app.get("/api/v2/config", async (c) => {
     maintenance: s.maintenance,
     store_enabled: s.store_enabled !== false,
     games_enabled: s.games_enabled !== false,
+    chat_enabled: s.chat_enabled !== false,
+    firebase_configured: !!s.firebase_db_url,
+    tg_bot_username: String(s.tg_bot_username || "").replace(/^@/, ""),
     library_enabled: s.library_enabled !== false,
     assignments_enabled: s.assignments_enabled !== false,
     journal_enabled: s.journal_enabled !== false,
@@ -161,6 +169,9 @@ app.route("/api/v2/owner", owner);
 app.route("/api/v2/public", exam);
 app.route("/api/v2/library", libraryPublic);
 app.route("/api/v2/games", gamesPublic);
+app.route("/api/v2/chat", chatRoutes);
+app.route("/api/v2/billing", billingWebhook);
+app.route("/api/v2/tgbot", tgbotPublic);
 app.route("/api/v2/public/assignments", assignmentsPublic);
 app.get("/api/v2/app/bilimuz.apk", async (c) => {
   const obj = await c.env.FILES.get("app/BilimUZ.apk");
@@ -173,7 +184,7 @@ app.get("/api/v2/app/bilimuz.apk", async (c) => {
 });
 app.get("/api/v2/media/*", async (c) => {
   const key = decodeURIComponent(c.req.path.replace(/^\/api\/v2\/media\//, ""));
-  if ((!key.startsWith("qimg/") && !key.startsWith("hw/") && !key.startsWith("libpdf/")) || key.includes("..")) {
+  if ((!key.startsWith("qimg/") && !key.startsWith("hw/") && !key.startsWith("libpdf/") && !key.startsWith("cosmetics/") && !key.startsWith("receipts/")) || key.includes("..")) {
     fail("Rasm topilmadi", 404);
   }
   const obj = await c.env.FILES.get(key);

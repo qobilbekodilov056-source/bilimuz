@@ -74,6 +74,7 @@ export const cardSchema = z
     title: z.string().trim().min(3).max(130),
     description: z.string().max(1200).default(""),
     reward: z.string().max(500).default(""),
+    reward_coins: z.number().int().min(0).max(5000).default(0),
     category: z.string().max(100).default(""),
     topic: z.string().max(120).default(""),
     mode: z.enum(["auto", "manual"]).default("auto"),

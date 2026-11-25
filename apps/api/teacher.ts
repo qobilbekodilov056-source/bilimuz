@@ -27,6 +27,8 @@ import {
   token,
 } from "./core";
 import { authenticate, csrf } from "./auth";
+import { billingTeacher, getEffectivePlan } from "./billing";
+import { notifyParentAttendance } from "./tgbot";
 import { insertQuestion, questionRecord, questionView } from "./questions";
 import { toCsv } from "./spreadsheet";
 import { libraryTeacher } from "./library";
@@ -246,9 +248,15 @@ teacher.get("/questions/:id", async (c) =>
     question: questionView(await scoped(c, "questions", c.req.param("id"))),
   }),
 );
-teacher.post("/questions", async (c) =>
-  c.json({ id: await insertQuestion(c, await body(c, questionSchema)) }, 201),
-);
+teacher.post("/questions", async (c) => {
+  const tid = c.get("principal").tenantId!;
+  const plan = await getEffectivePlan(c.env.DB, tid);
+  const qCnt = await first(c.env.DB, "SELECT COUNT(*) n FROM questions WHERE tenant_id=?", tid);
+  if (Number(qCnt?.n || 0) >= plan.max_questions) {
+    fail(`Savollar limiti to‘ldi (${qCnt?.n}/${plan.max_questions} — ${plan.name}). Ko‘proq savol qo‘shish uchun «Tarifim» bo‘limidan Ustoz Pro ga o‘ting.`, 403);
+  }
+  return c.json({ id: await insertQuestion(c, await body(c, questionSchema)) }, 201);
+});
 teacher.put("/questions/:id", async (c) => {
   const old = await scoped(c, "questions", c.req.param("id"));
   const q = await body(c, questionSchema),
@@ -316,7 +324,13 @@ teacher.get("/groups/:id", async (c) =>
 );
 teacher.post("/groups", async (c) => {
   const d = await body(c, groupSchema),
-    gid = id();
+    gid = id(),
+    tid = c.get("principal").tenantId!;
+  const plan = await getEffectivePlan(c.env.DB, tid);
+  const gCnt = await first(c.env.DB, "SELECT COUNT(*) n FROM groups WHERE tenant_id=?", tid);
+  if (Number(gCnt?.n || 0) >= plan.max_groups) {
+    fail(`Guruhlar limiti to‘ldi (${gCnt?.n}/${plan.max_groups} — ${plan.name}). Ko‘proq guruh ochish uchun «Tarifim» bo‘limidan Ustoz Pro ga o‘ting.`, 403);
+  }
   await stmt(
     c.env.DB,
     "INSERT INTO groups VALUES(?,?,?,?,?,?)",
@@ -408,6 +422,11 @@ teacher.post("/students", async (c) => {
   const d = await body(c, studentSchema);
   if (d.group_id) await scoped(c, "groups", d.group_id);
   const tid = c.get("principal").tenantId!;
+  const plan = await getEffectivePlan(c.env.DB, tid);
+  const sCnt = await first(c.env.DB, "SELECT COUNT(*) n FROM students WHERE tenant_id=? AND status='active'", tid);
+  if (Number(sCnt?.n || 0) >= plan.max_students) {
+    fail(`O‘quvchilar limiti to‘ldi (${sCnt?.n}/${plan.max_students} — ${plan.name}). Ko‘proq o‘quvchi qo‘shish uchun «Tarifim» bo‘limidan Ustoz Pro ga o‘ting.`, 403);
+  }
   const n = await first(
     c.env.DB,
     "SELECT (SELECT COUNT(*) FROM students WHERE tenant_id=?) n,json_extract(quotas_json,'$.students') quota FROM tenants WHERE id=?",
@@ -1182,6 +1201,7 @@ teacher.put("/journal/attendance", async (c) => {
         ),
   );
   await c.env.DB.batch(stmts);
+  notifyParentAttendance(c, tid, d.records);
   return c.json({ ok: true, count: d.records.length });
 });
 
@@ -1609,3 +1629,5 @@ teacher.delete("/account", async (c) => {
   ]);
   return c.json({ ok: true, backup_retention_days: 7 });
 });
+
+teacher.route("/billing", billingTeacher);

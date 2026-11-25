@@ -145,11 +145,7 @@ export function AuthPage({
     }
   }
   async function telegram() {
-    if (action !== "telegram") {
-      setAction("telegram");
-      setChallenge("");
-      return;
-    }
+    if (!challenge) return;
     setBusy(true);
     setError(null);
     try {
@@ -367,14 +363,16 @@ export function AuthPage({
                   busy ||
                   !cfg.telegram_enabled ||
                   (mode === "register" && !consent) ||
-                  (action === "telegram" && !challenge)
+                  !challenge
                 }
                 onClick={() => void telegram()}
               >
                 <Send size={18} />
-                {action === "telegram"
-                  ? "Telegramga o‘tish"
-                  : "Telegram orqali kirish"}
+                {busy
+                  ? "Telegramga o‘tilmoqda…"
+                  : !challenge
+                    ? "Tekshirilmoqda…"
+                    : "Telegram orqali kirish"}
               </button>
             </>
           )}

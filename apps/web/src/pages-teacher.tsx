@@ -33,6 +33,7 @@ import {
   type CardSettings,
 } from "../../../packages/shared/schema";
 import { api } from "./api";
+import { openCertificatePrint } from "./cert-pdf";
 import {
   Busy,
   Empty,
@@ -45,7 +46,7 @@ import {
   useDebounce,
   useToast,
 } from "./ui";
-import { useAccount } from "./main";
+import { useAccount, usePlan } from "./main";
 const base = "/api/v2/teacher";
 const date = (n: number) =>
   new Intl.DateTimeFormat("uz-UZ", {
@@ -131,6 +132,7 @@ function Metric({
 }
 export function Dashboard() {
   const { data, error, loading, reload } = useData(base + "/overview"),
+    billing = useData(base + "/billing/status"),
     account = useAccount();
   if (loading) return <Busy />;
   if (error) return <ErrorBox error={error} retry={reload} />;
@@ -150,6 +152,34 @@ export function Dashboard() {
           </>
         }
       />
+      {billing.data?.plan && (() => {
+        const pl = billing.data.plan;
+        const exp = Number(pl.expires_at || 0);
+        const daysLeft = exp > 0 ? Math.max(0, Math.ceil((exp - Date.now() / 1000) / 86400)) : 0;
+        const isPaid = pl.id !== "free";
+        return (
+          <div className="panel" style={{ marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", background: isPaid ? "linear-gradient(135deg, #f0fdf9 0%, #eff6ff 100%)" : "#f8fafc", borderColor: isPaid ? "#7ce0bc" : "var(--line)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <Pill tone={isPaid ? "green" : "neutral"}>{pl.name}</Pill>
+              <span style={{ fontSize: 13.5 }}>
+                {isPaid && exp > 0 ? (
+                  <>
+                    Amal qilish muddati: <strong>{new Date(exp * 1000).toLocaleDateString("uz-UZ")} gacha</strong>{" "}
+                    <span className="muted">({daysLeft} kun qoldi)</span>
+                  </>
+                ) : (
+                  <>Bepul tarif · Guruh va o‘quvchilar limitini oshirish uchun tarifni yangilang</>
+                )}
+              </span>
+            </div>
+            {(!isPaid || daysLeft <= 5) && (
+              <Link to="/studio/billing" className="btn primary tiny">
+                {isPaid ? "Tarifni uzaytirish" : "⚡ Upgrade (Pro)"}
+              </Link>
+            )}
+          </div>
+        );
+      })()}
       <div className="metrics">
         <Metric
           label="Savollar bazasi"
@@ -703,7 +733,7 @@ export function Questions() {
       <PageTitle
         eyebrow="BILIM KUTUBXONANGIZ"
         title="Savollar bazasi"
-        description="Har bir savol shaxsiy. Ulashish — faqat sizning tanlovingiz."
+        description={`Tarif limiti: ${usePlan().usage.questions} / ${usePlan().plan.max_questions} savol (${usePlan().plan.name}) · Har bir savol shaxsiy. Ulashish — faqat sizning tanlovingiz.`}
         actions={
           <>
             <button
@@ -1029,11 +1059,14 @@ export function GroupsStudents({ students = false }: { students?: boolean }) {
       <PageTitle
         eyebrow="O‘QUV JARAYONI"
         title={students ? "O‘quvchilar" : "Guruhlar"}
-        description={
-          students
-            ? "Kodlar faqat shu workspace doirasida ishlaydi."
-            : "O‘quvchilaringizni alohida guruhlarga birlashtiring."
-        }
+        description={(() => {
+          const { plan, usage } = usePlan();
+          const cur = students ? usage.students : usage.groups;
+          const lim = students ? plan.max_students : plan.max_groups;
+          return students
+            ? `Tarif limiti: ${cur} / ${lim} o‘quvchi (${plan.name}) · Kodlar faqat shu workspace doirasida ishlaydi.`
+            : `Tarif limiti: ${cur} / ${lim} guruh (${plan.name}) · O‘quvchilaringizni alohida guruhlarga birlashtiring.`;
+        })()}
         actions={
           <>
             {students && (
@@ -1176,13 +1209,47 @@ export function GroupsStudents({ students = false }: { students?: boolean }) {
             </Field>
             {students ? (
               <>
-                <Field label="O‘quvchi kodi (ixtiyoriy — bo‘sh qolsa avtomatik yaratiladi)">
-                  <input
-                    name="student_code"
-                    defaultValue={edit.student_code || ""}
-                    placeholder="Masalan: K48291 (avtomatik)"
-                    maxLength={64}
-                  />
+                <Field label={edit.id && edit.student_code ? "O‘quvchi kodi (biriktirilgan — faqat tiklash mumkin)" : "O‘quvchi kodi (1 marta tasodifiy yaratiladi)"}>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <input
+                      name="student_code"
+                      value={edit.student_code || ""}
+                      readOnly={!!(edit.id && edit.student_code && !edit._codeUnlocked) || !!edit._codeGenerated}
+                      onChange={(e) => setEdit({ ...edit, student_code: e.target.value.toUpperCase() })}
+                      placeholder="Masalan: K48291"
+                      maxLength={64}
+                      style={{ flex: 1 }}
+                    />
+                    {!edit.id ? (
+                      <button
+                        type="button"
+                        className="btn secondary tiny"
+                        disabled={!!edit._codeGenerated || !!edit.student_code}
+                        onClick={() => {
+                          const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+                          const code = letters[Math.floor(Math.random() * letters.length)] + String(10000 + Math.floor(Math.random() * 90000));
+                          setEdit({ ...edit, student_code: code, _codeGenerated: true });
+                        }}
+                      >
+                        {edit._codeGenerated || edit.student_code ? "✓ Kod berildi" : "🎲 Tasodifiy kod"}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn secondary tiny"
+                        disabled={!!edit._codeRecovered}
+                        onClick={() => {
+                          if (!confirm("Ushbu o‘quvchining eski kodi o‘rniga yangi kod tiklansinmi? Eski kod bilan endi kirib bo‘lmaydi.")) return;
+                          const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+                          const code = letters[Math.floor(Math.random() * letters.length)] + String(10000 + Math.floor(Math.random() * 90000));
+                          setEdit({ ...edit, student_code: code, _codeRecovered: true, _codeUnlocked: false });
+                          toast("Yangi tiklash kodi yaratildi. Saqlash tugmasini bosing!");
+                        }}
+                      >
+                        {edit._codeRecovered ? "✓ Tiklandi" : "🔄 Kodni tiklash"}
+                      </button>
+                    )}
+                  </div>
                 </Field>
                 <Field label="Guruh">
                   <select name="group_id" defaultValue={edit.group_id || ""}>
@@ -1662,6 +1729,28 @@ function CardEditor({
             maxLength={500}
             placeholder="Masalan: 80%+ natija uchun sertifikat yoki +5 bonus ball"
           />
+        </Field>
+        <Field label="Mukofot Bilim Coin (0 = test darajasi va foizga qarab avtomatik)">
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <input
+              type="number"
+              min={0}
+              max={5000}
+              value={value.reward_coins ?? 0}
+              onChange={(e) => set("reward_coins", Math.max(0, Number(e.target.value) || 0))}
+              style={{ width: 130 }}
+            />
+            {[0, 30, 50, 100].map((v) => (
+              <button
+                key={v}
+                type="button"
+                className={(value.reward_coins ?? 0) === v ? "btn primary tiny" : "btn secondary tiny"}
+                onClick={() => set("reward_coins", v)}
+              >
+                {v === 0 ? "Avto" : "+" + v + " Coin"}
+              </button>
+            ))}
+          </div>
         </Field>
         <div className="form-grid">
           <Field label="Savol tanlash">
@@ -2497,6 +2586,32 @@ function AttemptDetailModal({
                     : "Toza (0 ta)"}
               </strong>
             </div>
+          </div>
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+            <button
+              type="button"
+              className="btn primary tiny"
+              onClick={() =>
+                openCertificatePrint({
+                  studentName: a.student_name || "O‘quvchi",
+                  studentCode: a.student_code || "",
+                  testTitle: a.card_title || "Onlayn test",
+                  category: a.card_category || "",
+                  percentage: Number(a.percentage || 0),
+                  score: Number(a.score || 0),
+                  maxScore: Number(a.max_score || 0),
+                  correct: a.correct_count,
+                  incorrect: a.incorrect_count,
+                  unanswered: a.unanswered_count,
+                  passed: !!a.passed || Number(a.percentage || 0) >= 70,
+                  reward: a.reward || "",
+                  dateText: new Date(Number(a.submitted_at || Date.now() / 1000) * 1000).toLocaleDateString("uz-UZ"),
+                  certCode: "BUZ-" + String(a.id || "CERT").slice(0, 8).toUpperCase(),
+                })
+              }
+            >
+              🏅 QR-kodli Sertifikat (PDF)
+            </button>
           </div>
 
           <div className={"ac-result-panel" + ((a.violations_count || 0) > 0 ? " has-issues" : "")} style={{ padding: "12px 14px", borderRadius: 10, border: "1px solid var(--line)" }}>

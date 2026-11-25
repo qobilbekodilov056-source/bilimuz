@@ -1,4 +1,12 @@
+function calcAttemptCoins(pct: number, passed: boolean, s: any): number {
+  const custom = Number(s?.reward_coins || 0);
+  if (passed && custom > 0) return custom;
+  const base = pct >= 100 ? 40 : pct >= 90 ? 30 : pct >= 70 ? 20 : 10;
+  const mult = Number(s?.mix?.hard || 0) >= 50 ? 1.5 : Number(s?.mix?.medium || 0) >= 50 ? 1.25 : 1;
+  return Math.round(base * mult);
+}
 import { Hono } from "hono";
+import { notifyParentExamResult } from "./tgbot";
 import { z } from "zod";
 import {
   answerSchema,
@@ -44,6 +52,7 @@ function publicCard(r: Row) {
     title: r.title,
     description: s.description,
     reward: s.reward || "",
+    reward_coins: Number(s.reward_coins || 0),
     category: s.category,
     question_count: s.question_count,
     duration_minutes: s.duration_minutes,
@@ -511,6 +520,14 @@ exam.post("/attempts/:id/finish", async (c) => {
   const wasActive = a.status === "active";
   const result = await finalize(c.env, a.tenant_id, a.id);
   if (wasActive && result?.status === "submitted") {
+    const cs = JSON.parse(a.settings_json || "{}");
+    notifyParentExamResult(c, a.tenant_id, a.student_id, {
+      cardTitle: cs.title || "Onlayn test",
+      percentage: Number(result.percentage || 0),
+      score: Number(result.score || 0),
+      maxScore: Number(result.max_score || 0),
+      passed: Number(result.percentage || 0) >= Number(cs.pass_percent ?? 70),
+    });
     await stmt(
       c.env.DB,
       "UPDATE cards SET market_solves=COALESCE(market_solves,0)+1, market_score_sum=COALESCE(market_score_sum,0)+? WHERE tenant_id=? AND id=?",
@@ -567,6 +584,7 @@ exam.get("/attempts/:id/result", async (c) => {
       percentage: a.percentage,
       passed: a.percentage >= s.pass_percent,
       reward: s.reward || "",
+      earned_coins: calcAttemptCoins(a.percentage, a.percentage >= s.pass_percent, s),
       correct_count: a.correct_count,
       incorrect_count: a.incorrect_count,
       unanswered_count: a.unanswered_count,
@@ -772,7 +790,7 @@ exam.get("/practice/:slug", async (c) => {
 });
 
 exam.post("/practice/:slug/grade", async (c) => {
-  await rate(c, "practice-grade", 30, 60);
+  await rate(c, "practice-grade", 180, 60);
   const card = await getPublicCard(c);
   const s = JSON.parse(card.settings_json);
   if (card.status !== "active" || s.access_mode !== "open" || card.group_id)
@@ -783,6 +801,7 @@ exam.post("/practice/:slug/grade", async (c) => {
       answers: z.record(z.string(), z.array(z.string().max(4)).max(8)),
       order: z.array(z.string().max(80)).min(1).max(150),
       duration_seconds: z.number().int().min(0).max(86400).default(0),
+      student_code: z.string().max(64).optional().default(""),
     }),
   );
   const release = await first(
@@ -835,6 +854,31 @@ exam.post("/practice/:slug/grade", async (c) => {
     });
   });
   const percentage = maxScore ? Math.round((score / maxScore) * 1000) / 10 : 0;
+  const pCode = String(d.student_code || "").trim().toUpperCase().replace(/[\s-]+/g, "");
+  if (pCode) {
+    try {
+      const stu = await first(
+        c.env.DB,
+        "SELECT id FROM students WHERE UPPER(REPLACE(REPLACE(student_code,'-',''),' ',''))=? AND status='active' LIMIT 1",
+        pCode,
+      );
+      if (stu?.id) {
+        const uzToday = new Date(Date.now() + 5 * 3600 * 1000).toISOString().slice(0, 10);
+        const cr = await first(c.env.DB, "SELECT daily_quests_json FROM student_cosmetics WHERE student_id=?", stu.id);
+        let dq: any = {};
+        try { dq = JSON.parse(cr?.daily_quests_json || "{}"); } catch {}
+        dq.practice_done_date = uzToday;
+        await stmt(
+          c.env.DB,
+          `INSERT INTO student_cosmetics(student_id, daily_quests_json, updated_at) VALUES(?,?,?)
+           ON CONFLICT(student_id) DO UPDATE SET daily_quests_json=excluded.daily_quests_json, updated_at=excluded.updated_at`,
+          stu.id,
+          JSON.stringify(dq),
+          now(),
+        ).run();
+      }
+    } catch {}
+  }
   await stmt(
     c.env.DB,
     "UPDATE cards SET market_solves=COALESCE(market_solves,0)+1, market_score_sum=COALESCE(market_score_sum,0)+? WHERE tenant_id=? AND id=?",
@@ -849,6 +893,7 @@ exam.post("/practice/:slug/grade", async (c) => {
       percentage,
       passed: percentage >= s.pass_percent,
       reward: s.reward || "",
+      earned_coins: calcAttemptCoins(percentage, percentage >= s.pass_percent, s),
       correct_count: correctCount,
       incorrect_count: incorrectCount,
       unanswered_count: unansweredCount,
@@ -937,8 +982,11 @@ exam.post("/cards/:slug/comments", async (c) => {
 
 // Ota-ona va o'quvchi kabineti — kod orqali natija, davomat, yutuq/chegirmalar (sana filtri bilan)
 exam.get("/parent/:code", async (c) => {
-  await rate(c, "parent-lookup", 20, 600);
   const raw = decodeURIComponent(c.req.param("code") || "").trim();
+  if (!raw || raw === "__empty__") {
+    return c.json({ student: null, summary: null, tests: { items: [] }, attendance: { items: [] }, rewards: [] });
+  }
+  await rate(c, "parent-lookup", 180, 60);
   const norm = raw.toUpperCase().replace(/[\s-]+/g, "");
   if (norm.length < 3) fail("O‘quvchi kodini to‘g‘ri kiriting", 422);
 

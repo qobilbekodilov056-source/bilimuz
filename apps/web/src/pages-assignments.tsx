@@ -538,8 +538,8 @@ export function StudentAssignmentsPage() {
   return (
     <div className="exam-join lib-page">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
-        <Link to="/" className="back-link" style={{ margin: 0 }}>
-          <ArrowLeft size={17} /> Bosh sahifa
+        <Link to="/" onClick={(e) => { if (window.history.length > 1) { e.preventDefault(); window.history.back(); } }} className="back-link" style={{ margin: 0 }}>
+          <ArrowLeft size={17} /> Orqaga
         </Link>
         {st && (
           <Link to={"/parent/" + encodeURIComponent(st.student_code)} className="btn secondary tiny">

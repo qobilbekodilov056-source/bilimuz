@@ -11,11 +11,15 @@ import {
   Archive,
   Check,
   ClipboardCheck,
+  CreditCard,
   LifeBuoy,
   LogOut,
   Settings,
   ShieldCheck,
   Gamepad2,
+  ShoppingBag,
+  Trash2,
+  Upload,
   Users,
 } from "lucide-react";
 import { api } from "./api";
@@ -37,6 +41,8 @@ const sections = [
   ["teachers", "O‘qituvchilar", Users],
   ["moderation", "Store moderatsiyasi", ClipboardCheck],
   ["games", "O‘yinlar", Gamepad2],
+  ["shop", "Do‘kon / Packlar", ShoppingBag],
+  ["billing", "To‘lovlar", CreditCard],
   ["reports", "Kontent shikoyatlari", ShieldCheck],
   ["support", "Support inbox", LifeBuoy],
   ["operations", "Operatsiyalar", Archive],
@@ -94,6 +100,10 @@ export function OwnerPage() {
           <Moderation />
         ) : section === "games" ? (
           <OwnerGamesPage />
+        ) : section === "shop" ? (
+          <OwnerShopPacks />
+        ) : section === "billing" ? (
+          <OwnerBillingPage />
         ) : section === "reports" ? (
           <OwnerReports />
         ) : section === "support" ? (
@@ -150,28 +160,96 @@ function OwnerOverview() {
           </div>
         </section>
         <section className="panel">
-          <h2>Tizim holati</h2>
-          <div className="stat-line">
-            <span>D1</span>
-            <Pill tone="green">Ulandi</Pill>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 12 }}>
+            <h2 style={{ margin: 0 }}>Server resurslari va qolgan joy</h2>
+            <button type="button" className="btn secondary tiny" onClick={() => r.reload()}>
+              Yangilash
+            </button>
           </div>
-          <div className="stat-line">
-            <span>Baza hajmi</span>
-            <b>{(r.data.health.storage_bytes / 1024 / 1024).toFixed(2)} MB</b>
-          </div>
-          <div className="stat-line">
-            <span>Oxirgi backup</span>
-            <b>
-              {r.data.health.last_backup
-                ? new Date(
-                    r.data.health.last_backup.created_at * 1000,
-                  ).toLocaleString()
-                : "Hali yaratilmagan"}
-            </b>
-          </div>
-          <p className="muted">{r.data.usage_notice}</p>
-          {r.data.usage && <pre>{JSON.stringify(r.data.usage, null, 2)}</pre>}
-          <p>Ogohlantirish chegaralari: 70% · 85% · 95%</p>
+
+          {(() => {
+            const fmtSize = (b: number) => {
+              if (b >= 1024 * 1024 * 1024) return (b / 1024 / 1024 / 1024).toFixed(2) + " GB";
+              if (b >= 1024 * 1024) return (b / 1024 / 1024).toFixed(2) + " MB";
+              if (b >= 1024) return (b / 1024).toFixed(1) + " KB";
+              return b + " B";
+            };
+            const d1 = r.data.resources?.d1 || {
+              used_bytes: r.data.health.storage_bytes,
+              limit_bytes: 500 * 1024 * 1024,
+              free_bytes: Math.max(0, 500 * 1024 * 1024 - r.data.health.storage_bytes),
+              percent: Number(((r.data.health.storage_bytes / (500 * 1024 * 1024)) * 100).toFixed(2)),
+            };
+            const r2 = r.data.resources?.r2 || {
+              used_bytes: 0,
+              limit_bytes: 10 * 1024 * 1024 * 1024,
+              free_bytes: 10 * 1024 * 1024 * 1024,
+              percent: 0,
+              files_count: 0,
+              breakdown: {},
+            };
+            const barColor = (pct: number) => (pct >= 85 ? "#dc2626" : pct >= 70 ? "#d97706" : "#0c8066");
+            const labels: Array<[string, string]> = [
+              ["apk", "Android APK"],
+              ["cosmetics", "Do‘kon packlari"],
+              ["libpdf", "Kutubxona PDF"],
+              ["hw", "Vazifa fayllari"],
+              ["qimg", "Savol rasmlari"],
+              ["backups", "Backuplar"],
+            ];
+            return (
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                <div style={{ padding: 12, borderRadius: 12, background: "#f8fafc", border: "1px solid var(--line)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                    <strong>D1 Ma’lumotlar bazasi (500 MB)</strong>
+                    <Pill tone={d1.percent >= 85 ? "red" : d1.percent >= 70 ? "amber" : "green"}>{d1.percent}% band</Pill>
+                  </div>
+                  <div style={{ height: 8, borderRadius: 999, background: "#e2e8f0", overflow: "hidden", marginBottom: 8 }}>
+                    <div style={{ height: "100%", width: Math.max(1, Math.min(100, d1.percent)) + "%", background: barColor(d1.percent), borderRadius: 999 }} />
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5 }}>
+                    <span>Band: <b>{fmtSize(d1.used_bytes)}</b></span>
+                    <span style={{ color: "#0c8066" }}>Bo‘sh qolgan: <b>{fmtSize(d1.free_bytes)}</b></span>
+                  </div>
+                </div>
+
+                <div style={{ padding: 12, borderRadius: 12, background: "#f8fafc", border: "1px solid var(--line)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                    <strong>R2 Fayl xotirasi (10 GB · {r2.files_count} ta fayl)</strong>
+                    <Pill tone={r2.percent >= 85 ? "red" : r2.percent >= 70 ? "amber" : "green"}>{r2.percent}% band</Pill>
+                  </div>
+                  <div style={{ height: 8, borderRadius: 999, background: "#e2e8f0", overflow: "hidden", marginBottom: 8 }}>
+                    <div style={{ height: "100%", width: Math.max(1, Math.min(100, r2.percent)) + "%", background: barColor(r2.percent), borderRadius: 999 }} />
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, marginBottom: 10 }}>
+                    <span>Band: <b>{fmtSize(r2.used_bytes)}</b></span>
+                    <span style={{ color: "#0c8066" }}>Bo‘sh qolgan: <b>{fmtSize(r2.free_bytes)}</b></span>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(145px, 1fr))", gap: 6 }}>
+                    {labels.map(([k, title]) => {
+                      const b = r2.breakdown?.[k] || { bytes: 0, count: 0 };
+                      return (
+                        <div key={k} style={{ padding: "6px 8px", borderRadius: 8, background: "#fff", border: "1px solid var(--line)", fontSize: 11.5 }}>
+                          <span className="muted" style={{ display: "block" }}>{title}</span>
+                          <strong>{fmtSize(b.bytes)}</strong> <small className="muted">({b.count})</small>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="stat-line">
+                  <span>Oxirgi backup</span>
+                  <b>
+                    {r.data.health.last_backup
+                      ? new Date(r.data.health.last_backup.created_at * 1000).toLocaleString()
+                      : "Hali yaratilmagan"}
+                  </b>
+                </div>
+                <small className="muted">{r.data.usage_notice}</small>
+              </div>
+            );
+          })()}
         </section>
       </div>
     </>
@@ -1013,6 +1091,11 @@ function OwnerSettingsForm({ initial }: { initial: any }) {
           parent_enabled: f.parent_enabled === "on",
           practice_enabled: f.practice_enabled === "on",
           apk_enabled: f.apk_enabled === "on",
+          chat_enabled: f.chat_enabled === "on",
+          firebase_db_url: String(f.firebase_db_url || "").trim().replace(/\/+$/, ""),
+          billing_card_number: String(f.billing_card_number || "").trim(),
+          billing_card_holder: String(f.billing_card_holder || "").trim(),
+          tg_bot_username: String(f.tg_bot_username || "").trim().replace(/^@/, ""),
           reason: f.reason,
         },
       });
@@ -1058,6 +1141,45 @@ function OwnerSettingsForm({ initial }: { initial: any }) {
             defaultValue={initial.retention_days}
           />
         </Field>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
+          <Field label="To‘lov kartasi (Uzcard / Humo)">
+            <input name="billing_card_number" placeholder="8600 0000 0000 0000" defaultValue={initial.billing_card_number || ""} maxLength={40} />
+          </Field>
+          <Field label="Karta egasi (F.I.Sh)">
+            <input name="billing_card_holder" placeholder="QOBILBEK ODILOV" defaultValue={initial.billing_card_holder || ""} maxLength={80} />
+          </Field>
+        </div>
+        <Field label="Ota-ona xabarnoma Telegram bot username (ixtiyoriy)">
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <input name="tg_bot_username" placeholder="BilimUZNotifyBot (@ siz)" defaultValue={initial.tg_bot_username || ""} maxLength={80} style={{ flex: 1 }} />
+            <button
+              type="button"
+              className="btn secondary tiny"
+              onClick={async () => {
+                try {
+                  const res = await api("/api/v2/owner/tgbot/set-webhook", { method: "POST", data: {} });
+                  toast("Telegram webhook ulandi: " + res.webhook_url);
+                } catch (e: any) {
+                  toast(e?.message || "Webhook ulashda xato");
+                }
+              }}
+            >
+              🤖 Webhookni ulash
+            </button>
+          </div>
+        </Field>
+        <Field label="Firebase Realtime Database URL (Jonli Chat uchun)">
+          <input
+            name="firebase_db_url"
+            type="url"
+            placeholder="https://sizning-loyiha-default-rtdb.europe-west1.firebasedatabase.app"
+            defaultValue={initial.firebase_db_url || ""}
+            maxLength={300}
+          />
+          <small className="muted" style={{ display: "block", marginTop: 4 }}>
+            console.firebase.google.com → Realtime Database manzili (Bilim UZ serveridan 0 bayt joy oladi).
+          </small>
+        </Field>
         <div style={{ margin: "18px 0 14px" }}>
           <strong style={{ display: "block", marginBottom: 8 }}>
             Platforma bo‘limlarini boshqarish (Yoqish / Yashirish)
@@ -1068,6 +1190,7 @@ function OwnerSettingsForm({ initial }: { initial: any }) {
           <div className="feature-flags-grid">
             {[
               ["games_enabled", "🎮 O‘yinlar markazi (/games)"],
+              ["chat_enabled", "💬 Jonli Chat (Guruhlar + Umumiy chat)"],
               ["library_enabled", "📚 Raqamli kutubxona (/library)"],
               ["assignments_enabled", "📝 Vazifalar (/vazifalar va Studio)"],
               ["journal_enabled", "📊 Kurs jurnali (Studio)"],
@@ -1100,6 +1223,366 @@ function OwnerSettingsForm({ initial }: { initial: any }) {
           Sozlamalarni saqlash
         </button>
       </form>
+    </section>
+  );
+}
+
+function OwnerShopPacks() {
+  const toast = useToast();
+  const list = useData("/api/v2/owner/shop-items");
+  const [slot, setSlot] = useState<"banner" | "frame" | "avatar" | "title">("banner");
+  const [name, setName] = useState("");
+  const [desc, setDesc] = useState("");
+  const [price, setPrice] = useState("150");
+  const [rarity, setRarity] = useState("epic");
+  const [titleText, setTitleText] = useState("");
+  const [imageUrl, setImageUrl] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<any>(null);
+
+  async function onUpload(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const fd = new FormData();
+      fd.set("slot", slot);
+      fd.set("name", name.trim());
+      fd.set("description", desc.trim());
+      fd.set("price", price);
+      fd.set("rarity", rarity);
+      fd.set("title_text", titleText.trim());
+      fd.set("image_url", imageUrl.trim());
+      if (file) fd.set("file", file);
+      await api("/api/v2/owner/shop-items", { method: "POST", form: fd });
+      toast("Yangi kosmetik pack do‘konga qo‘shildi!");
+      setName("");
+      setDesc("");
+      setTitleText("");
+      setImageUrl("");
+      setFile(null);
+      list.reload();
+    } catch (err) {
+      setError(err);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onDelete(id: string) {
+    if (!confirm("Ushbu pack do‘kondan o‘chirilsinmi?")) return;
+    try {
+      await api("/api/v2/owner/shop-items/" + encodeURIComponent(id), { method: "DELETE" });
+      toast("Pack o‘chirildi");
+      list.reload();
+    } catch (err) {
+      setError(err);
+    }
+  }
+
+  const items: any[] = list.data?.items || [];
+
+  return (
+    <section className="panel">
+      <div className="panel-title">
+        <div>
+          <h2 style={{ margin: 0 }}>Bilim Do‘koni — Kosmetik Packlar</h2>
+          <small className="muted">
+            Discord / Steam uslubidagi banner, shaffof PNG ramka, avatar yoki unvon yuklang (PNG/WebP/GIF, maks 2 MB).
+          </small>
+        </div>
+      </div>
+
+      {!!error && <ErrorBox error={error} />}
+
+      <form onSubmit={onUpload} style={{ display: "grid", gap: 12, marginTop: 14, marginBottom: 24 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
+          <Field label="Pack turi">
+            <select value={slot} onChange={(e) => setSlot(e.target.value as any)}>
+              <option value="banner">Banner (16:5 keng rasm)</option>
+              <option value="frame">Avatar ramkasi (1:1 shaffof PNG)</option>
+              <option value="avatar">Avatar (1:1 kvadrat rasm)</option>
+              <option value="title">Unvon (matnli badge)</option>
+            </select>
+          </Field>
+          <Field label="Nomi">
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Masalan: Cyber Dragon Banner" required maxLength={80} />
+          </Field>
+          <Field label="Narxi (Bilim Coin)">
+            <input type="number" min={0} max={100000} value={price} onChange={(e) => setPrice(e.target.value)} required />
+          </Field>
+          <Field label="Darajasi (Rarity)">
+            <select value={rarity} onChange={(e) => setRarity(e.target.value)}>
+              <option value="common">Oddiy</option>
+              <option value="rare">Noyob</option>
+              <option value="epic">Epik</option>
+              <option value="legendary">Afsonaviy</option>
+            </select>
+          </Field>
+        </div>
+
+        <Field label="Qisqa tavsif">
+          <input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="O‘quvchilar uchun qisqa ta’rif…" maxLength={200} />
+        </Field>
+
+        {slot === "title" ? (
+          <Field label="Unvon matni">
+            <input value={titleText} onChange={(e) => setTitleText(e.target.value)} placeholder="Masalan: Kiber Chempion" required maxLength={60} />
+          </Field>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
+            <Field label="Rasm faylini yuklash (PNG / WebP / GIF)">
+              <input type="file" accept="image/png,image/webp,image/gif,image/jpeg,image/svg+xml" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+            </Field>
+            <Field label="Yoki tashqi rasm havolasi (ixtiyoriy)">
+              <input type="url" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://..." />
+            </Field>
+          </div>
+        )}
+
+        <div>
+          <button className="btn primary" disabled={busy}>
+            <Upload size={15} /> {busy ? "Yuklanmoqda…" : "Do‘konga qo‘shish"}
+          </button>
+        </div>
+      </form>
+
+      <h3 style={{ margin: "0 0 12px" }}>Yuklangan packlar ({items.length})</h3>
+      {list.loading ? (
+        <Busy />
+      ) : !items.length ? (
+        <Empty title="Hali maxsus packlar yuklanmagan" text="Yuqoridagi forma orqali birinchi banner, ramka yoki avatarni qo‘shing." />
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12 }}>
+          {items.map((it: any) => (
+            <div key={it.id} className="panel" style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+              {it.image_url && (
+                <div style={{ height: 90, borderRadius: 10, overflow: "hidden", background: "#0f172a", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <img src={it.image_url} alt={it.name} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: it.slot === "banner" ? "cover" : "contain", width: it.slot === "banner" ? "100%" : "auto", height: it.slot === "banner" ? "100%" : "auto" }} />
+                </div>
+              )}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
+                <strong>{it.name}</strong>
+                <Pill tone="neutral">{it.slot}</Pill>
+              </div>
+              <small className="muted">{it.price} Coin · {it.rarity}</small>
+              <button type="button" className="btn secondary tiny" onClick={() => onDelete(it.id)}>
+                <Trash2 size={13} /> O‘chirish
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function OwnerBillingPage() {
+  const toast = useToast();
+  const data = useData("/api/v2/owner/billing/orders");
+  const keysData = useData("/api/v2/owner/billing/keys");
+  const teachers = useData("/api/v2/owner/teachers?limit=100");
+  const [keyPlan, setKeyPlan] = useState<"pro" | "center">("pro");
+  const [keyDays, setKeyDays] = useState("30");
+  const [keyUses, setKeyUses] = useState("1");
+  const [keyNote, setKeyNote] = useState("");
+  const [grantTenant, setGrantTenant] = useState("");
+  const [grantPlan, setGrantPlan] = useState<"pro" | "center" | "free">("pro");
+  const [grantDays, setGrantDays] = useState("30");
+  const [busy, setBusy] = useState(false);
+
+  async function approve(id: string) {
+    setBusy(true);
+    try {
+      await api("/api/v2/owner/billing/orders/" + encodeURIComponent(id) + "/approve", { method: "POST", data: {} });
+      toast("To‘lov tasdiqlandi va tarif yoqildi!");
+      data.reload();
+    } catch (e: any) {
+      toast(e?.message || "Xatolik");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function reject(id: string) {
+    setBusy(true);
+    try {
+      await api("/api/v2/owner/billing/orders/" + encodeURIComponent(id) + "/reject", { method: "POST", data: {} });
+      toast("Buyurtma rad etildi");
+      data.reload();
+    } catch (e: any) {
+      toast(e?.message || "Xatolik");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function grant(e: FormEvent) {
+    e.preventDefault();
+    if (!grantTenant) return;
+    setBusy(true);
+    try {
+      await api("/api/v2/owner/billing/grant", {
+        method: "POST",
+        data: { tenant_id: grantTenant, plan: grantPlan, days: Number(grantDays || 30), note: "Owner bergan" },
+      });
+      toast("Tarif qo‘lda belgilandi!");
+      data.reload();
+    } catch (e: any) {
+      toast(e?.message || "Xatolik");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function createKey(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      const res = await api("/api/v2/owner/billing/keys", {
+        method: "POST",
+        data: { plan: keyPlan, days: Number(keyDays || 30), max_uses: Number(keyUses || 1), note: keyNote },
+      });
+      await navigator.clipboard?.writeText(res.code).catch(() => {});
+      toast("Product Key yaratildi va nusxalandi: " + res.code);
+      setKeyNote("");
+      keysData.reload();
+    } catch (e: any) {
+      toast(e?.message || "Xatolik");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteKey(id: string) {
+    await api("/api/v2/owner/billing/keys/" + encodeURIComponent(id), { method: "DELETE" });
+    toast("Kalit o‘chirildi");
+    keysData.reload();
+  }
+
+  const orders: any[] = data.data?.orders || [];
+  const pKeys: any[] = keysData.data?.items || [];
+  return (
+    <section className="panel">
+      <div className="panel-title">
+        <div>
+          <h2 style={{ margin: 0 }}>To‘lovlar va Tariflar boshqaruvi</h2>
+          <small className="muted">
+            Avtomatik Telegram bot orqali tasdiqlangan yoki chek yuklangan buyurtmalar. Karta raqamini «Sozlamalar» da kiriting.
+          </small>
+        </div>
+      </div>
+
+      <form onSubmit={grant} style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end", padding: 12, borderRadius: 12, background: "#f8fafc", border: "1px solid var(--line)", margin: "14px 0 18px" }}>
+        <Field label="Workspace (O‘qituvchi)">
+          <select value={grantTenant} onChange={(e) => setGrantTenant(e.target.value)} required>
+            <option value="">Tanlang…</option>
+            {(teachers.data?.items || []).map((t: any) => (
+              <option key={t.id} value={t.id}>{t.name} ({t.display_name})</option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Tarif">
+          <select value={grantPlan} onChange={(e) => setGrantPlan(e.target.value as any)}>
+            <option value="pro">Ustoz Pro</option>
+            <option value="center">Ultra</option>
+            <option value="free">Start (Bepul)</option>
+          </select>
+        </Field>
+        <Field label="Kun">
+          <input type="number" min={0} max={3650} value={grantDays} onChange={(e) => setGrantDays(e.target.value)} style={{ width: 90 }} />
+        </Field>
+        <button className="btn primary tiny" disabled={busy}>Qo‘lda yoqish</button>
+      </form>
+
+      {/* Product Key Generator */}
+      <div style={{ padding: 14, borderRadius: 12, background: "#f8fafc", border: "1px solid var(--line)", marginBottom: 18 }}>
+        <strong style={{ display: "block", marginBottom: 8 }}>🔑 Product Key yaratish (Tarif kaliti)</strong>
+        <form onSubmit={createKey} style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 12 }}>
+          <Field label="Tarif">
+            <select value={keyPlan} onChange={(e) => setKeyPlan(e.target.value as any)}>
+              <option value="pro">Ustoz Pro</option>
+              <option value="center">Ultra</option>
+            </select>
+          </Field>
+          <Field label="Muddat (kun)">
+            <input type="number" min={1} max={3650} value={keyDays} onChange={(e) => setKeyDays(e.target.value)} style={{ width: 90 }} />
+          </Field>
+          <Field label="Ishlatish soni">
+            <input type="number" min={1} max={500} value={keyUses} onChange={(e) => setKeyUses(e.target.value)} style={{ width: 90 }} />
+          </Field>
+          <Field label="Izoh (ixtiyoriy)">
+            <input value={keyNote} onChange={(e) => setKeyNote(e.target.value)} placeholder="Masalan: Akmal ustozga" maxLength={120} />
+          </Field>
+          <button className="btn primary tiny" disabled={busy}>+ Kalit yaratish</button>
+        </form>
+        {pKeys.length > 0 && (
+          <div style={{ display: "grid", gap: 6 }}>
+            {pKeys.map((k: any) => (
+              <div key={k.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "8px 10px", background: "#fff", borderRadius: 8, border: "1px solid var(--line)", fontSize: 13 }}>
+                <div>
+                  <strong style={{ letterSpacing: 0.6 }}>{k.code}</strong>{" "}
+                  <small className="muted">· {(k.plan === "center" ? "ULTRA" : k.plan.toUpperCase())} · {k.days} kun · {k.used_count}/{k.max_uses} ishlatildi {k.note ? "· " + k.note : ""}</small>
+                </div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button type="button" className="btn secondary tiny" onClick={() => { navigator.clipboard.writeText(k.code); toast("Kalit nusxalandi"); }}>Nusxa</button>
+                  <button type="button" className="btn secondary tiny" onClick={() => deleteKey(k.id)}>O‘chirish</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {data.loading ? <Busy /> : !orders.length ? (
+        <Empty title="Hali to‘lov buyurtmalari yo‘q" text="O‘qituvchilar tarif tanlaganda shu yerda chiqadi." />
+      ) : (
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>O‘qituvchi</th>
+                <th>Tarif</th>
+                <th>Aniq summa</th>
+                <th>Chek / Izoh</th>
+                <th>Holat</th>
+                <th>Amal</th>
+              </tr>
+            </thead>
+            <tbody>
+              {orders.map((o: any) => (
+                <tr key={o.id}>
+                  <td><strong>{o.tenant_name}</strong><small className="muted" style={{ display: "block" }}>{o.teacher_name}</small></td>
+                  <td>{(o.plan === "center" ? "ULTRA" : o.plan.toUpperCase())} ({o.months} oy)</td>
+                  <td><strong>{Number(o.unique_amount).toLocaleString("ru-RU")} so‘m</strong></td>
+                  <td>
+                    {o.receipt_key && (
+                      <a href={"/api/v2/media/" + o.receipt_key} target="_blank" rel="noreferrer" className="btn secondary tiny">
+                        Chekni ko‘rish
+                      </a>
+                    )}
+                    {o.tx_note && <small className="muted" style={{ display: "block", marginTop: 4 }}>{o.tx_note}</small>}
+                  </td>
+                  <td>
+                    <Pill tone={o.status === "paid" ? "green" : o.status === "rejected" ? "red" : "amber"}>
+                      {o.status === "paid" ? "To‘landi" : o.status === "rejected" ? "Rad etildi" : "Kutilmoqda"}
+                    </Pill>
+                  </td>
+                  <td>
+                    {o.status === "pending" && (
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button type="button" className="btn primary tiny" disabled={busy} onClick={() => approve(o.id)}>Tasdiqlash</button>
+                        <button type="button" className="btn secondary tiny" disabled={busy} onClick={() => reject(o.id)}>Rad</button>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </section>
   );
 }

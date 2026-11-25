@@ -15,6 +15,9 @@ export interface Bindings extends Omit<
   EMAIL_FROM?: string;
   MFA_ENCRYPTION_KEY?: string;
   BACKUP_ENCRYPTION_KEY?: string;
+  BILLING_WEBHOOK_SECRET?: string;
+  TELEGRAM_BOT_TOKEN?: string;
+  TELEGRAM_BOT_WEBHOOK_SECRET?: string;
 }
 export type Principal = {
   userId: string;

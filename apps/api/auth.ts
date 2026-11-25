@@ -511,7 +511,7 @@ auth.post("/telegram/start", async (c) => {
       })
       .strict(),
   );
-  await turnstile(c, d.turnstile_token, "telegram");
+  await turnstile(c, d.turnstile_token, ["telegram", "login", "register"]);
   if (!c.env.TELEGRAM_CLIENT_ID || !c.env.TELEGRAM_CLIENT_SECRET)
     fail("Telegram login hali sozlanmagan", 503);
   const raw = token(),
