@@ -237,7 +237,7 @@ export function ChatPage({ studioMode = false }: { studioMode?: boolean }) {
     setCodeError("");
     try {
       // In studio mode (or if no code given, try studio session first silently)
-      if (studioMode || (!studentCode && !paramCode)) {
+      if (studioMode) {
         const sr = await fetch("/api/v2/chat/studio-access", { credentials: "include" });
         if (sr.ok) {
           const d = await sr.json();

@@ -27,13 +27,14 @@ const app = new Hono<AppEnv>();
 app.use("*", async (c, next) => {
   const reqUrl = new URL(c.req.url);
   const appUrl = new URL(c.env.APP_ORIGIN);
+  const isHttp = reqUrl.protocol === "http:" || c.req.header("x-forwarded-proto") === "http";
   if (
     c.env.ENVIRONMENT !== "development" &&
-    c.req.method === "GET" &&
+    (c.req.method === "GET" || c.req.method === "HEAD") &&
     ((reqUrl.host !== appUrl.host && reqUrl.host.endsWith(".workers.dev")) ||
-      (reqUrl.host === appUrl.host && appUrl.protocol === "https:" && reqUrl.protocol === "http:"))
+      (reqUrl.host === appUrl.host && appUrl.protocol === "https:" && isHttp))
   ) {
-    return c.redirect(c.env.APP_ORIGIN + reqUrl.pathname + reqUrl.search, 302);
+    return c.redirect(c.env.APP_ORIGIN + reqUrl.pathname + reqUrl.search, 301);
   }
   const requestId = id();
   c.set("requestId", requestId);
