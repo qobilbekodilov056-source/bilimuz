@@ -117,7 +117,7 @@ export function LandingPage() {
           </nav>
 
           <div className="lp-header-right">
-            <Link to="/studio/billing" className="lp-pill-outline sm" style={{ borderColor: "#0c8066", color: "#0c8066" }}>
+            <Link to="/pricing" className="lp-pill-outline sm" style={{ borderColor: "#0c8066", color: "#0c8066" }}>
               ⚡ Upgrade
             </Link>
             <Link to="/studio" className="lp-pill-cta">

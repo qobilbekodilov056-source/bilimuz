@@ -26,7 +26,7 @@ const LEARNER_NAV = [
   ["group", "Guruhim (ST-...)", Users],
 ] as const;
 
-function LearnerBillingStandalone() {
+export function LearnerBillingStandalone() {
   const st = useData("/api/v2/auth/learner-billing/status");
   const toast = useToast();
   const [months, setMonths] = useState<1 | 3 | 6 | 12>(1);
@@ -252,7 +252,7 @@ export function LearnerCabinetPage() {
               {label}
             </NavLink>
           ))}
-          <NavLink to="/learner/billing" style={{ marginTop: 10, border: "1px solid rgba(124,242,210,0.35)", borderRadius: 12 }}>
+          <NavLink to="/pricing" style={{ marginTop: 10, border: "1px solid rgba(124,242,210,0.35)", borderRadius: 12 }}>
             <CreditCard size={18} />
             Tarifni yangilash
           </NavLink>
@@ -265,7 +265,7 @@ export function LearnerCabinetPage() {
 
       <main className="owner-main">
         {section === "billing" ? (
-          <LearnerBillingStandalone />
+          <Navigate to="/pricing" replace />
         ) : section === "books" ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>

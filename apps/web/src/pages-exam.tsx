@@ -1755,7 +1755,7 @@ export function PracticeExam() {
               <button type="submit" className="btn primary full" disabled={buyBusy}>
                 {buyBusy ? "Tayyorlanmoqda..." : `Alohida sotib olish — ${Number(card.price_uzs || 0).toLocaleString("uz-UZ")} so‘m`}
               </button>
-              <Link to="/learner/billing" className="btn secondary full" style={{ textAlign: "center" }}>
+              <Link to="/pricing" className="btn secondary full" style={{ textAlign: "center" }}>
                 ⚡ Obuna bilan barcha pullik test va kitoblarni ochish (29 000 so‘m/oy dan)
               </Link>
             </form>

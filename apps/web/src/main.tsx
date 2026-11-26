@@ -64,6 +64,7 @@ import { LearnerCabinetPage } from "./pages-learner";
 import { LandingPage } from "./pages-landing";
 import { ChatPage } from "./pages-chat";
 import { TeacherBillingPage } from "./pages-billing";
+import { StandalonePricingPage } from "./pages-pricing";
 import { ParentPortal } from "./pages-parent";
 import { OwnerPage } from "./pages-owner";
 import "./style.css";
@@ -119,7 +120,7 @@ function ProGate({ title, desc, children }: { title: string; desc: string; child
         </div>
       </div>
       <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
-        <Link to="/studio/billing" className="btn primary">
+        <Link to="/pricing" className="btn primary">
           ⚡ Ustoz Pro ga o‘tish
         </Link>
         <Link to="/studio" className="btn secondary">
@@ -296,7 +297,7 @@ function StudioShell() {
           ))}
         </nav>
         <div className="dock-bottom">
-          <NavLink to="/studio/billing" className="dock-plan-btn">
+          <NavLink to="/pricing" className="dock-plan-btn">
           <CreditCard size={16} />
           <span className="dock-plan-copy">
             <strong>{planInfo && planInfo.id !== "free" ? planInfo.name : "Tarifni yangilash"}</strong>
@@ -671,6 +672,7 @@ function App() {
           <Route path="/parent" element={<FeatureGate enabled={cfg.parent_enabled} title="Ota-ona kabineti"><ParentPortal /></FeatureGate>} />
           <Route path="/parent/:code" element={<FeatureGate enabled={cfg.parent_enabled} title="Ota-ona kabineti"><ParentPortal /></FeatureGate>} />
           <Route path="/vazifalar" element={<FeatureGate enabled={cfg.assignments_enabled} title="Vazifalar"><StudentAssignmentsPage /></FeatureGate>} />
+          <Route path="/pricing" element={<StandalonePricingPage />} />
           <Route path="/learner/*" element={<LearnerCabinetPage />} />
           <Route path="/student" element={<StudentCabinetPage />} />
           <Route path="/student/:code" element={<StudentCabinetPage />} />
@@ -690,7 +692,7 @@ function App() {
             <Route path="analytics" element={<Analytics />} />
             <Route path="store" element={<StorePage />} />
             <Route path="support" element={<SupportPage />} />
-            <Route path="billing" element={<TeacherBillingPage />} />
+            <Route path="billing" element={<Navigate to="/pricing" replace />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>
           <Route path="/owner/*" element={<OwnerPage />} />
