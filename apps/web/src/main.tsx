@@ -173,9 +173,17 @@ function Brand({ inverse = false }: { inverse?: boolean }) {
   );
 }
 function StudioShell() {
+  const cfg = useConfig();
+  const account = useData("/api/v2/auth/me");
   const [planState, setPlanState] = useState<PlanState>(DEFAULT_PLAN_STATE);
   const planInfo = planState.plan;
+  const isConfirmedTeacher =
+    !account.loading &&
+    !account.error &&
+    account.data?.user?.scope === "teacher" &&
+    account.data?.user?.account_type !== "learner";
   useEffect(() => {
+    if (!isConfirmedTeacher) return;
     fetch("/api/v2/teacher/billing/status", { credentials: "same-origin" })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
@@ -190,9 +198,7 @@ function StudioShell() {
         }
       })
       .catch(() => setPlanState((p) => ({ ...p, loading: false })));
-  }, []);
-  const cfg = useConfig();
-  const account = useData("/api/v2/auth/me");
+  }, [isConfirmedTeacher]);
   const location = useLocation();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false),
@@ -414,7 +420,6 @@ function Home() {
           {cfg.parent_enabled && <Link to="/parent">Ota-ona kabineti</Link>}
           <Link to="/student">O‘quvchi kabineti</Link>
           {cfg.assignments_enabled && <Link to="/vazifalar">Vazifalar</Link>}
-          {cfg.games_enabled && <Link to="/games">O‘yinlar</Link>}
           {cfg.chat_enabled && <Link to="/chat">Chat</Link>}
           {cfg.library_enabled && <Link to="/library">Kutubxona</Link>}
           {cfg.store_enabled && <Link to="/store">Savollar do‘koni</Link>}

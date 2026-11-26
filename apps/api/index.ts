@@ -299,7 +299,6 @@ app.get("/robots.txt", (c) => {
       "Allow: /",
       "Allow: /practice",
       "Allow: /library",
-      "Allow: /games",
       "Allow: /store",
       "Disallow: /studio",
       "Disallow: /owner",
@@ -318,7 +317,6 @@ app.get("/sitemap.xml", async (c) => {
     { loc: origin + "/practice", lastmod: today, priority: "0.9" },
     { loc: origin + "/library", lastmod: today, priority: "0.9" },
     { loc: origin + "/store", lastmod: today, priority: "0.8" },
-    { loc: origin + "/games", lastmod: today, priority: "0.8" },
     { loc: origin + "/student", lastmod: today, priority: "0.7" },
     { loc: origin + "/parent", lastmod: today, priority: "0.7" },
   ];

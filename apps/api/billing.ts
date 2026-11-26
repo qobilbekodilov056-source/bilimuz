@@ -106,6 +106,46 @@ export async function activateLearnerPlan(
 }
 
 
+export async function pickUniqueAmount(
+  db: D1Database,
+  baseAmount: number,
+  ts: number,
+): Promise<number> {
+  const used = new Set<number>();
+  try {
+    const allPending = await rows(
+      db,
+      `SELECT unique_amount FROM billing_orders WHERE status='pending' AND expires_at >= ?
+       UNION ALL
+       SELECT unique_amount FROM library_book_orders WHERE status='pending' AND expires_at >= ?
+       UNION ALL
+       SELECT unique_amount FROM test_card_orders WHERE status='pending' AND expires_at >= ?
+       UNION ALL
+       SELECT unique_amount FROM learner_billing_orders WHERE status='pending' AND expires_at >= ?`,
+      ts,
+      ts,
+      ts,
+      ts,
+    );
+    for (const r of allPending) used.add(Number(r.unique_amount));
+  } catch {
+    try {
+      const bPending = await rows(
+        db,
+        "SELECT unique_amount FROM billing_orders WHERE status='pending' AND expires_at >= ?",
+        ts,
+      );
+      for (const r of bPending) used.add(Number(r.unique_amount));
+    } catch {}
+  }
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const offset = 101 + Math.floor(Math.random() * 880);
+    const candidate = baseAmount + offset;
+    if (!used.has(candidate)) return candidate;
+  }
+  return baseAmount + 101 + Math.floor(Math.random() * 880);
+}
+
 export async function getEffectivePlan(db: D1Database, tenantId: string) {
   try {
     const row = await first(db, "SELECT * FROM tenant_plans WHERE tenant_id=?", tenantId);

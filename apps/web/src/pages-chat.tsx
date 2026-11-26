@@ -16,7 +16,7 @@ import {
   VolumeX,
   X,
 } from "lucide-react";
-import { Busy, ErrorBox, useToast } from "./ui";
+import { Busy, ErrorBox, useToast, SmartBackLink } from "./ui";
 
 type ChatRoomMeta = {
   id: string;
@@ -544,9 +544,7 @@ export function ChatPage({ studioMode = false }: { studioMode?: boolean }) {
     <div className={studioMode ? "chat-page-studio" : "chat-page-public"}>
       {!studioMode && (
         <header className="chat-topbar">
-          <Link to="/" onClick={(e) => { if (window.history.length > 1) { e.preventDefault(); window.history.back(); } }} className="btn secondary tiny">
-            <ArrowLeft size={15} /> Orqaga
-          </Link>
+          <SmartBackLink className="btn secondary tiny" />
           <div className="chat-topbar-title">
             <MessageCircle size={18} />
             <strong>Bilim UZ Jonli Chat</strong>

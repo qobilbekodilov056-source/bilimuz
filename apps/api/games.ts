@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import type { AppEnv } from "./types";
+import type { AppEnv, Ctx } from "./types";
+import { authenticate } from "./auth";
 import { body, fail, first, id, now, rate, rows, stmt } from "./core";
 
 export const gamesPublic = new Hono<AppEnv>();
@@ -21,7 +22,40 @@ const gameSchema = z.object({
   active: z.boolean().optional().default(true),
 });
 
-// --- PUBLIC GAMES API (/api/v2/games) ---
+// --- SCHOOL/CENTER GAMES API (/api/v2/games) ---
+
+async function requireGamesAccess(c: Ctx) {
+  // 1. Tizimga kirgan Teacher yoki Owner bo'lsa ruxsat (learner emas!)
+  try {
+    const p = await authenticate(c);
+    if (p.scope === "owner") return;
+    if (p.scope === "teacher") {
+      const u = await first(c.env.DB, "SELECT account_type FROM users WHERE id=?", p.userId);
+      if (u?.account_type !== "learner") return;
+    }
+  } catch {}
+
+  // 2. O'quv markazi / maktab o'quvchi kodi (ST-... yoki A12345) tekshiruvi
+  const code = String(c.req.header("x-student-code") || c.req.query("student_code") || "").trim().toUpperCase();
+  if (code) {
+    const st = await first(
+      c.env.DB,
+      "SELECT id FROM students WHERE UPPER(student_code)=? AND status='active' LIMIT 1",
+      code,
+    );
+    if (st) return;
+  }
+
+  fail(
+    "O‘yinlar bo‘limi faqat o‘quv markazi yoki maktab kabineti va undagi o‘quvchilar (o‘quvchi kodi bilan) uchun ochiq.",
+    403,
+  );
+}
+
+gamesPublic.use("*", async (c, next) => {
+  await requireGamesAccess(c);
+  await next();
+});
 
 gamesPublic.get("/", async (c) => {
   const q = (c.req.query("q") || "").trim().toLowerCase();

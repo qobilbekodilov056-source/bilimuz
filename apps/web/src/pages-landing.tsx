@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   ArrowDownToLine,
@@ -40,6 +40,17 @@ export function LandingPage() {
   const [slug, setSlug] = useState("");
   const [footerSlug, setFooterSlug] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [cabinetPath, setCabinetPath] = useState("/studio");
+  useEffect(() => {
+    fetch("/api/v2/auth/me", { credentials: "same-origin" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: any) => {
+        const u = d?.user;
+        if (!u) return;
+        setCabinetPath(u.scope === "owner" ? "/owner" : u.account_type === "learner" ? "/learner" : "/studio");
+      })
+      .catch(() => {});
+  }, []);
   const [spotRole, setSpotRole] = useState<"teacher" | "student" | "parent">("teacher");
 
   function goToTest(raw: string) {
@@ -113,7 +124,6 @@ export function LandingPage() {
             {cfg.assignments_enabled && <Link to="/vazifalar">Vazifalar</Link>}
             {cfg.chat_enabled && <Link to="/chat">Chat</Link>}
             {cfg.library_enabled && <Link to="/library">Kutubxona</Link>}
-            {cfg.games_enabled && <Link to="/games">O‘yinlar</Link>}
             {cfg.store_enabled && <Link to="/store">Savollar do‘koni</Link>}
           </nav>
 
@@ -121,7 +131,7 @@ export function LandingPage() {
             <Link to="/pricing" className="lp-pill-outline sm" style={{ borderColor: "#0c8066", color: "#0c8066" }}>
               <Zap size={14} color="#0c8066" /> Upgrade
             </Link>
-            <Link to="/studio" className="lp-pill-cta">
+            <Link to={cabinetPath} className="lp-pill-cta">
               Kabinetim <ArrowRight size={15} />
             </Link>
             <button
@@ -142,10 +152,9 @@ export function LandingPage() {
             {cfg.assignments_enabled && <Link to="/vazifalar" onClick={() => setMenuOpen(false)}>Vazifalar</Link>}
             {cfg.chat_enabled && <Link to="/chat" onClick={() => setMenuOpen(false)}>Jonli chat</Link>}
             {cfg.library_enabled && <Link to="/library" onClick={() => setMenuOpen(false)}>Kutubxona</Link>}
-            {cfg.games_enabled && <Link to="/games" onClick={() => setMenuOpen(false)}>O‘yinlar</Link>}
             {cfg.store_enabled && <Link to="/store" onClick={() => setMenuOpen(false)}>Savollar do‘koni</Link>}
-            <Link to="/studio" className="lp-pill-cta" onClick={() => setMenuOpen(false)}>
-              O‘qituvchi kabineti <ArrowRight size={15} />
+            <Link to={cabinetPath} className="lp-pill-cta" onClick={() => setMenuOpen(false)}>
+              Kabinetim <ArrowRight size={15} />
             </Link>
           </div>
         )}
@@ -298,7 +307,7 @@ export function LandingPage() {
               <strong>Kurs jurnali</strong>
               <small>Davomat &amp; Baho</small>
             </Link>
-            <Link to={cfg.games_enabled ? "/games" : "/"} className="lp-tile is-cosmic">
+            <Link to="/student" className="lp-tile is-cosmic">
               <Gamepad2 size={20} />
               <strong>O‘yinlar</strong>
               <small>Bilim bellashuvi</small>
@@ -433,7 +442,6 @@ export function LandingPage() {
               <h4>Platforma</h4>
               {cfg.practice_enabled && <Link to="/practice">Ochiq mashq testlari</Link>}
               {cfg.library_enabled && <Link to="/library">Raqamli kutubxona</Link>}
-              {cfg.games_enabled && <Link to="/games">O‘yinlar markazi</Link>}
               {cfg.store_enabled && <Link to="/store">Savollar do‘koni</Link>}
               {cfg.chat_enabled && <Link to="/chat">Jonli guruh chati</Link>}
             </div>
@@ -456,7 +464,7 @@ export function LandingPage() {
                   maxLength={80}
                 />
                 <div className="lp-footer-form-row">
-                  <Link to="/studio" className="lp-pill-outline sm">Kirish</Link>
+                  <Link to={cabinetPath} className="lp-pill-outline sm">Kirish</Link>
                   <button type="submit" className="lp-pill-cta sm">Boshlash</button>
                 </div>
               </form>

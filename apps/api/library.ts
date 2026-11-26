@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { AppEnv } from "./types";
 import { body, fail, first, id, now, rate, rows, settings, stmt } from "./core";
 import { authenticate } from "./auth";
-import { getEffectivePlan, getEffectiveLearnerPlan } from "./billing";
+import { getEffectivePlan, getEffectiveLearnerPlan, pickUniqueAmount } from "./billing";
 
 export const libraryPublic = new Hono<AppEnv>();
 export const libraryTeacher = new Hono<AppEnv>();
@@ -289,13 +289,7 @@ libraryPublic.post("/:id/buy", async (c) => {
     }, 201);
   }
 
-  let uniqueAmount = finalPrice + 101 + Math.floor(Math.random() * 880);
-  for (let i = 0; i < 8; i++) {
-    const clash1 = await first(c.env.DB, "SELECT id FROM billing_orders WHERE status='pending' AND unique_amount=? AND expires_at>=?", uniqueAmount, ts);
-    const clash2 = await first(c.env.DB, "SELECT id FROM library_book_orders WHERE status='pending' AND unique_amount=? AND expires_at>=?", uniqueAmount, ts);
-    if (!clash1 && !clash2) break;
-    uniqueAmount = finalPrice + 101 + Math.floor(Math.random() * 880);
-  }
+  const uniqueAmount = await pickUniqueAmount(c.env.DB, finalPrice, ts);
 
   const oid = id();
   const unlockToken = id() + id();

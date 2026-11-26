@@ -39,6 +39,8 @@ export const teacher = new Hono<AppEnv>();
 teacher.use("*", async (c, next) => {
   const p = await authenticate(c);
   if (p.scope !== "teacher") fail("Teacher workspace talab qilinadi", 403);
+  const uRole = await first(c.env.DB, "SELECT account_type FROM users WHERE id=?", p.userId);
+  if (uRole?.account_type === "learner") fail("Bu bo‘lim faqat o‘qituvchi va o‘quv markazi kabineti uchun", 403);
   if (!["GET", "HEAD"].includes(c.req.method)) {
     await csrf(c);
     if (p.membershipRole !== "tenant_owner")
@@ -253,7 +255,7 @@ teacher.post("/questions", async (c) => {
   const plan = await getEffectivePlan(c.env.DB, tid);
   const qCnt = await first(c.env.DB, "SELECT COUNT(*) n FROM questions WHERE tenant_id=?", tid);
   if (Number(qCnt?.n || 0) >= plan.max_questions) {
-    fail(`Savollar limiti to‘ldi (${qCnt?.n}/${plan.max_questions} — ${plan.name}). Ko‘proq savol qo‘shish uchun «Tarifim» bo‘limidan Ustoz Pro ga o‘ting.`, 403);
+    fail(`Savollar limiti to‘ldi (${qCnt?.n}/${plan.max_questions} — ${plan.name}). Ko‘proq savol qo‘shish uchun «Tarifni yangilash» (/pricing) sahifasidan Ustoz Pro ga o‘ting.`, 403);
   }
   return c.json({ id: await insertQuestion(c, await body(c, questionSchema)) }, 201);
 });
@@ -329,7 +331,7 @@ teacher.post("/groups", async (c) => {
   const plan = await getEffectivePlan(c.env.DB, tid);
   const gCnt = await first(c.env.DB, "SELECT COUNT(*) n FROM groups WHERE tenant_id=?", tid);
   if (Number(gCnt?.n || 0) >= plan.max_groups) {
-    fail(`Guruhlar limiti to‘ldi (${gCnt?.n}/${plan.max_groups} — ${plan.name}). Ko‘proq guruh ochish uchun «Tarifim» bo‘limidan Ustoz Pro ga o‘ting.`, 403);
+    fail(`Guruhlar limiti to‘ldi (${gCnt?.n}/${plan.max_groups} — ${plan.name}). Ko‘proq guruh ochish uchun «Tarifni yangilash» (/pricing) sahifasidan Ustoz Pro ga o‘ting.`, 403);
   }
   await stmt(
     c.env.DB,
@@ -425,7 +427,7 @@ teacher.post("/students", async (c) => {
   const plan = await getEffectivePlan(c.env.DB, tid);
   const sCnt = await first(c.env.DB, "SELECT COUNT(*) n FROM students WHERE tenant_id=? AND status='active'", tid);
   if (Number(sCnt?.n || 0) >= plan.max_students) {
-    fail(`O‘quvchilar limiti to‘ldi (${sCnt?.n}/${plan.max_students} — ${plan.name}). Ko‘proq o‘quvchi qo‘shish uchun «Tarifim» bo‘limidan Ustoz Pro ga o‘ting.`, 403);
+    fail(`O‘quvchilar limiti to‘ldi (${sCnt?.n}/${plan.max_students} — ${plan.name}). Ko‘proq o‘quvchi qo‘shish uchun «Tarifni yangilash» (/pricing) sahifasidan Ustoz Pro ga o‘ting.`, 403);
   }
   const n = await first(
     c.env.DB,
@@ -652,7 +654,8 @@ teacher.post("/cards/:id/status", async (c) => {
       ),
       stmt(
         c.env.DB,
-        "UPDATE cards SET published_version=1,status='active',market_status=CASE WHEN market_status='none' THEN 'pending' ELSE market_status END,updated_at=? WHERE tenant_id=? AND id=? AND published_version=0",
+        "UPDATE cards SET published_version=1,status='active',market_status=CASE WHEN market_status='none' AND ?='open' AND group_id IS NULL THEN 'pending' ELSE market_status END,updated_at=? WHERE tenant_id=? AND id=? AND published_version=0",
+        s.access_mode,
         now(),
         tid,
         r.id,
@@ -693,6 +696,7 @@ teacher.post("/cards/:id/duplicate", async (c) => {
   return c.json({ id: cid }, 201);
 });
 teacher.post("/cards/:id/market", async (c) => {
+  fail("Test kartalarini marketga chiqarish faqat Owner tomonidan tasdiqlanadi", 403);
   const tid = c.get("principal").tenantId!;
   const card = await scoped(c, "cards", c.req.param("id"));
   const d = await body(c, z.object({ action: z.enum(["submit", "remove"]) }));
@@ -1269,6 +1273,7 @@ teacher.get("/attempts/:id", async (c) => {
   });
 });
 teacher.post("/questions/:id/submit-store", async (c) => {
+  fail("Savollar yaratilganda avtomatik Owner moderatsiyasiga yuboriladi", 403);
   const q = await scoped(c, "questions", c.req.param("id"));
   const d = await body(
     c,

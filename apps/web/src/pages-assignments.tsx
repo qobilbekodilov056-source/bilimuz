@@ -16,7 +16,7 @@ import {
   Upload,
 } from "lucide-react";
 import { api } from "./api";
-import { Busy, Empty, ErrorBox, Field, Modal, PageTitle, Pill, useData, useToast } from "./ui";
+import { Busy, Empty, ErrorBox, Field, Modal, PageTitle, Pill, useData, useToast, SmartBackLink } from "./ui";
 
 const KIND_META: Record<string, { label: string; tone: "blue" | "green" | "amber" | "neutral" }> = {
   text: { label: "Matn / Kod", tone: "blue" },
@@ -538,9 +538,7 @@ export function StudentAssignmentsPage() {
   return (
     <div className="exam-join lib-page">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
-        <Link to="/" onClick={(e) => { if (window.history.length > 1) { e.preventDefault(); window.history.back(); } }} className="back-link" style={{ margin: 0 }}>
-          <ArrowLeft size={17} /> Orqaga
-        </Link>
+        <SmartBackLink style={{ margin: 0 }} />
         {st && (
           <Link to={"/parent/" + encodeURIComponent(st.student_code)} className="btn secondary tiny">
             Davomat va natijalar <ArrowRight size={14} />

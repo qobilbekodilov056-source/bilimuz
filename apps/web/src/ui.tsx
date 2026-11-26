@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import {
   cloneElement,
   createContext,
@@ -11,7 +12,8 @@ import {
   type ReactNode,
 } from "react";
 import { api } from "./api";
-import { AlertCircle, ArrowRight, Check, LoaderCircle, X } from "lucide-react";
+import { AlertCircle, ArrowRight, Check, LoaderCircle, X, ArrowLeft,
+} from "lucide-react";
 export const ToastContext = createContext<(text: string) => void>(() => {});
 export const useToast = () => useContext(ToastContext);
 export function ToastProvider({ children }: { children: ReactNode }) {
@@ -213,4 +215,70 @@ export function useDebounce(value: string, delay = 300) {
     return () => clearTimeout(timer);
   }, [value, delay]);
   return v;
+}
+
+let _cachedHomePath: string | null = null;
+let _cachedHomeAt = 0;
+
+export function SmartBackLink({
+  fallback = "/",
+  label = "Orqaga",
+  className = "back-link",
+  style,
+}: {
+  fallback?: string;
+  label?: string;
+  className?: string;
+  style?: import("react").CSSProperties;
+}) {
+  const [target, setTarget] = useState<string>(() => {
+    try {
+      const code = localStorage.getItem("bilimuz_student_code");
+      if (code) return "/student/" + encodeURIComponent(code);
+    } catch {}
+    if (_cachedHomePath && Date.now() - _cachedHomeAt < 30_000) return _cachedHomePath;
+    return fallback;
+  });
+
+  useEffect(() => {
+    try {
+      const code = localStorage.getItem("bilimuz_student_code");
+      if (code) {
+        setTarget("/student/" + encodeURIComponent(code));
+        return;
+      }
+    } catch {}
+    if (_cachedHomePath && Date.now() - _cachedHomeAt < 30_000) {
+      setTarget(_cachedHomePath);
+      return;
+    }
+    let alive = true;
+    fetch("/api/v2/auth/me", { credentials: "same-origin" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: any) => {
+        if (!alive) return;
+        const u = d?.user;
+        const next = !u
+          ? fallback
+          : u.scope === "owner"
+            ? "/owner"
+            : u.account_type === "learner"
+              ? "/learner"
+              : "/studio";
+        _cachedHomePath = next;
+        _cachedHomeAt = Date.now();
+        setTarget(next);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [fallback]);
+
+  return (
+    <Link to={target} className={className} style={style}>
+      <ArrowLeft size={16} />
+      {label}
+    </Link>
+  );
 }

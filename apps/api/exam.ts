@@ -1,6 +1,6 @@
 import { settings } from "./core";
 import { authenticate } from "./auth";
-import { getEffectivePlan, getEffectiveLearnerPlan } from "./billing";
+import { getEffectivePlan, getEffectiveLearnerPlan, pickUniqueAmount } from "./billing";
 function calcAttemptCoins(pct: number, passed: boolean, s: any): number {
   const custom = Number(s?.reward_coins || 0);
   if (passed && custom > 0) return custom;
@@ -874,14 +874,7 @@ exam.post("/practice/:slug/buy", async (c) => {
     }, 201);
   }
 
-  let uniqueAmount = finalPrice + 101 + Math.floor(Math.random() * 880);
-  for (let i = 0; i < 8; i++) {
-    const c1 = await first(c.env.DB, "SELECT id FROM billing_orders WHERE status='pending' AND unique_amount=? AND expires_at>=?", uniqueAmount, ts);
-    const c2 = await first(c.env.DB, "SELECT id FROM library_book_orders WHERE status='pending' AND unique_amount=? AND expires_at>=?", uniqueAmount, ts);
-    const c3 = await first(c.env.DB, "SELECT id FROM test_card_orders WHERE status='pending' AND unique_amount=? AND expires_at>=?", uniqueAmount, ts);
-    if (!c1 && !c2 && !c3) break;
-    uniqueAmount = finalPrice + 101 + Math.floor(Math.random() * 880);
-  }
+  const uniqueAmount = await pickUniqueAmount(c.env.DB, finalPrice, ts);
 
   const oid = id();
   const unlockToken = id() + id();
@@ -1030,6 +1023,27 @@ exam.post("/practice/:slug/grade", async (c) => {
   const s = JSON.parse(card.settings_json);
   if (card.status !== "active" || s.access_mode !== "open" || card.group_id)
     fail("Bu test ochiq mashq rejimida mavjud emas", 403);
+  const gradePrice = Number(card.price_uzs || 0);
+  if (gradePrice > 0) {
+    let gradeAuth: any = null;
+    try { gradeAuth = await authenticate(c); } catch {}
+    if (!gradeAuth) fail("Pulli testni tekshirish uchun tizimga kiring", 401);
+    let canGrade = gradeAuth.scope === "owner";
+    if (!canGrade) {
+      const lp = await getEffectiveLearnerPlan(c.env.DB, gradeAuth.userId);
+      if (lp.id === "learner_pro") canGrade = true;
+    }
+    if (!canGrade) {
+      const paidOrd = await first(
+        c.env.DB,
+        "SELECT id FROM test_card_orders WHERE card_slug=? AND user_id=? AND status='paid' LIMIT 1",
+        card.slug,
+        gradeAuth.userId,
+      );
+      if (paidOrd) canGrade = true;
+    }
+    if (!canGrade) fail("Bu pulli testni yakunlash uchun avval xarid qiling yoki Abituriyent Pro ga o‘ting", 403);
+  }
   const d = await body(
     c,
     z.object({
@@ -1167,7 +1181,7 @@ exam.get("/market-cards", async (c) => {
       (SELECT ROUND(AVG(rating),1) FROM card_comments cc WHERE cc.card_id=c.id) avg_rating
      FROM cards c
      JOIN tenants t ON t.id=c.tenant_id
-     WHERE c.status='active' AND c.market_status='approved' AND c.published_version>0 AND t.status='active'
+     WHERE c.status='active' AND c.market_status='approved' AND c.published_version>0 AND c.group_id IS NULL AND json_extract(c.settings_json,'$.access_mode')='open' AND t.status='active'
      ORDER BY c.market_solves DESC, c.updated_at DESC LIMIT 100`,
   );
   const items = list.map((r) => {

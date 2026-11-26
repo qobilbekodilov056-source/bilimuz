@@ -13,9 +13,10 @@ export function StandalonePricingPage() {
   const me = useData("/api/v2/auth/me");
   const user = me.data?.user;
   const isLoggedIn = !me.loading && !me.error && !!user;
-  const isLearner = isLoggedIn && user.account_type === "learner";
-  const isTeacher = isLoggedIn && user.account_type !== "learner";
-  const backPath = isLearner ? "/learner" : isTeacher ? "/studio" : "/";
+  const isOwner = isLoggedIn && user.scope === "owner";
+  const isLearner = isLoggedIn && !isOwner && user.account_type === "learner";
+  const isTeacher = isLoggedIn && !isOwner && user.account_type !== "learner";
+  const backPath = isOwner ? "/owner" : isLearner ? "/learner" : isTeacher ? "/studio" : "/";
 
   return (
     <div style={{ minHeight: "100vh", background: "#f4f7f8", padding: "24px 16px 64px" }}>
@@ -39,6 +40,19 @@ export function StandalonePricingPage() {
 
         {me.loading ? (
           <Busy />
+        ) : isOwner ? (
+          <div className="panel" style={{ maxWidth: 560, margin: "40px auto", textAlign: "center", padding: "36px 26px", display: "flex", flexDirection: "column", gap: 14 }}>
+            <div style={{ display: "flex", justifyContent: "center" }}>
+              <Pill tone="green"><ShieldCheck size={14} /> OWNER HISOBI</Pill>
+            </div>
+            <h1 style={{ margin: 0, fontSize: 26 }}>Sizda barcha imkoniyatlar cheksiz</h1>
+            <p className="muted" style={{ margin: 0 }}>
+              Platforma egasi sifatida sizga tarif sotib olish talab etilmaydi. Tarif buyurtmalari va narxlarni Owner OS orqali boshqarishingiz mumkin.
+            </p>
+            <div style={{ marginTop: 6 }}>
+              <Link to="/owner" className="btn primary">Owner OS ga o‘tish</Link>
+            </div>
+          </div>
         ) : isLearner ? (
           <LearnerBillingStandalone />
         ) : isTeacher ? (

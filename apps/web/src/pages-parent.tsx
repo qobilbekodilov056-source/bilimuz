@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, ArrowRight, Award, CalendarDays, Search } from "lucide-react";
-import { Busy, Empty, ErrorBox, Field, Pill, useData } from "./ui";
+import { Busy, Empty, ErrorBox, Field, Pill, useData, SmartBackLink } from "./ui";
 import { openCertificatePrint } from "./cert-pdf";
 import { useConfig } from "./main";
 
@@ -48,10 +48,7 @@ export function ParentPortal() {
   return (
     <div className="exam-join parent-page">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
-        <Link to="/" onClick={(e) => { if (window.history.length > 1) { e.preventDefault(); window.history.back(); } }} className="back-link" style={{ margin: 0 }}>
-          <ArrowLeft size={17} />
-          Orqaga
-        </Link>
+        <SmartBackLink style={{ margin: 0 }} />
         {activeCode && (
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {cfg.tg_bot_username && (

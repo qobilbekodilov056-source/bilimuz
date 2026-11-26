@@ -1,6 +1,6 @@
 import { settings } from "./core";
 import { rows } from "./core";
-import { getEffectivePlan, getEffectiveLearnerPlan, LEARNER_PLANS } from "./billing";
+import { getEffectivePlan, getEffectiveLearnerPlan, LEARNER_PLANS, pickUniqueAmount } from "./billing";
 import { Hono } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { createRemoteJWKSet, jwtVerify } from "jose";
@@ -872,6 +872,7 @@ auth.get("/learner-hub", async (c) => {
 
 auth.post("/account-type", async (c) => {
   const p = await authenticate(c);
+  if (p.scope !== "owner") fail("Hisob rolini o‘zgartirish mumkin emas", 403);
   const d = await body(c, z.object({ account_type: z.enum(["teacher", "learner"]) }).strict());
   await stmt(c.env.DB, "UPDATE users SET account_type=? WHERE id=?", d.account_type, p.userId).run();
   return c.json({ ok: true, account_type: d.account_type });
@@ -913,13 +914,7 @@ auth.post("/learner-billing/create-order", async (c) => {
   const ts = now();
   const discountMul = d.months >= 12 ? 0.8 : d.months >= 6 ? 0.85 : d.months >= 3 ? 0.9 : 1;
   const baseAmount = Math.round((LEARNER_PLANS[d.plan].price * d.months * discountMul) / 1000) * 1000;
-  let uniqueAmount = baseAmount + 101 + Math.floor(Math.random() * 880);
-  for (let i = 0; i < 8; i++) {
-    const c1 = await first(c.env.DB, "SELECT id FROM billing_orders WHERE status='pending' AND unique_amount=? AND expires_at>=?", uniqueAmount, ts);
-    const c2 = await first(c.env.DB, "SELECT id FROM learner_billing_orders WHERE status='pending' AND unique_amount=? AND expires_at>=?", uniqueAmount, ts);
-    if (!c1 && !c2) break;
-    uniqueAmount = baseAmount + 101 + Math.floor(Math.random() * 880);
-  }
+  const uniqueAmount = await pickUniqueAmount(c.env.DB, baseAmount, ts);
   const oid = id();
   const expiresAt = ts + 30 * 60;
   await stmt(

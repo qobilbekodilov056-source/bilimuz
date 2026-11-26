@@ -48,8 +48,7 @@ import {
   Pill,
   useData,
   useDebounce,
-  useToast,
-} from "./ui";
+  useToast, SmartBackLink } from "./ui";
 import { useAccount, usePlan } from "./main";
 const base = "/api/v2/teacher";
 const date = (n: number) =>
@@ -177,8 +176,8 @@ export function Dashboard() {
               </span>
             </div>
             {(!isPaid || daysLeft <= 5) && (
-              <Link to="/studio/billing" className="btn primary tiny">
-                {isPaid ? "Tarifni uzaytirish" : "⚡ Upgrade (Pro)"}
+              <Link to="/pricing" className="btn primary tiny" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                {isPaid ? "Tarifni uzaytirish" : <><Zap size={14} /> Upgrade (Pro)</>}
               </Link>
             )}
           </div>

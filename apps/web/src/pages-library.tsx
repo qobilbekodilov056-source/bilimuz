@@ -28,8 +28,7 @@ import {
   Pill,
   useData,
   useDebounce,
-  useToast,
-} from "./ui";
+  useToast, SmartBackLink } from "./ui";
 
 const SUBJECT_SUGGESTIONS = [
   "Informatika",
@@ -248,10 +247,7 @@ export function LibraryCatalog() {
 
   return (
     <div className="exam-join lib-page">
-      <Link to="/" onClick={(e) => { if (window.history.length > 1) { e.preventDefault(); window.history.back(); } }} className="back-link">
-        <ArrowLeft size={17} />
-        Orqaga
-      </Link>
+      <SmartBackLink />
 
       <div className="panel lib-hero">
         <span className="eyebrow">BILIM UZ · ELEKTRON KUTUBXONA</span>

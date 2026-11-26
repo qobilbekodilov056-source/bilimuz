@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { api, uuidToken, ApiError } from "./api";
 import { openCertificatePrint } from "./cert-pdf";
-import { Busy, ErrorBox, Field, Modal, Pill, useData } from "./ui";
+import { Busy, ErrorBox, Field, Modal, Pill, useData, SmartBackLink } from "./ui";
 type Answer = {
   position: number;
   selected: string[];

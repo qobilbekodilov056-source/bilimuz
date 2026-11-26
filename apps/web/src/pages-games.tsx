@@ -13,7 +13,7 @@ import {
   Users,
 } from "lucide-react";
 import { api } from "./api";
-import { Busy, Empty, ErrorBox, Field, Modal, PageTitle, Pill, useData, useDebounce, useToast } from "./ui";
+import { Busy, Empty, ErrorBox, Field, Modal, PageTitle, Pill, useData, useDebounce, useToast, SmartBackLink } from "./ui";
 
 const MODE_META: Record<string, { label: string; tone: "green" | "blue" | "amber" | "neutral" }> = {
   duel: { label: "1 vs 1 Duel", tone: "amber" },
@@ -42,21 +42,19 @@ export function GamesCatalogPage() {
   const [search, setSearch] = useState("");
   const [mode, setMode] = useState("");
   const q = useDebounce(search, 200);
+  const stCode = (() => { try { return localStorage.getItem("bilimuz_student_code") || ""; } catch { return ""; } })();
   const data = useData(
-    `/api/v2/games?q=${encodeURIComponent(q)}&mode=${encodeURIComponent(mode)}`,
+    `/api/v2/games?q=${encodeURIComponent(q)}&mode=${encodeURIComponent(mode)}${stCode ? "&student_code=" + encodeURIComponent(stCode) : ""}`,
   );
   const items: any[] = data.data?.items || [];
 
   function trackPlay(id: string) {
-    fetch(`/api/v2/games/${encodeURIComponent(id)}/play`, { method: "POST" }).catch(() => {});
+    fetch(`/api/v2/games/${encodeURIComponent(id)}/play${stCode ? "?student_code=" + encodeURIComponent(stCode) : ""}`, { method: "POST" }).catch(() => {});
   }
 
   return (
     <div className="exam-join lib-page">
-      <Link to="/" onClick={(e) => { if (window.history.length > 1) { e.preventDefault(); window.history.back(); } }} className="back-link">
-        <ArrowLeft size={17} />
-        Orqaga
-      </Link>
+      <SmartBackLink />
 
       <div className="panel lib-hero">
         <span className="eyebrow">BILIM UZ · O‘YINLAR MARKAZI</span>
@@ -96,6 +94,17 @@ export function GamesCatalogPage() {
 
       {data.loading ? (
         <Busy />
+      ) : (data.error as any)?.status === 403 ? (
+        <div className="panel" style={{ textAlign: "center", padding: "36px 24px", maxWidth: 560, margin: "20px auto" }}>
+          <h2 style={{ margin: "0 0 8px" }}>O‘yinlar bo‘limi yopiq</h2>
+          <p className="muted" style={{ margin: "0 0 18px" }}>
+            O‘yinlar faqat o‘quv markazi va maktab kabineti hamda undagi o‘quvchilar (o‘quvchi kodi orqali) uchun ochiq.
+          </p>
+          <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+            <Link to="/student" className="btn primary">O‘quvchi kodi bilan kirish</Link>
+            <Link to="/login" className="btn secondary">O‘qituvchi kirishi</Link>
+          </div>
+        </div>
       ) : data.error ? (
         <ErrorBox error={data.error} retry={data.reload} />
       ) : !items.length ? (
@@ -171,7 +180,8 @@ export function GamesCatalogPage() {
 // ============================================================================
 export function GamePlayPage() {
   const { id = "" } = useParams();
-  const data = useData("/api/v2/games/" + encodeURIComponent(id));
+  const stCode = (() => { try { return localStorage.getItem("bilimuz_student_code") || ""; } catch { return ""; } })();
+  const data = useData("/api/v2/games/" + encodeURIComponent(id) + (stCode ? "?student_code=" + encodeURIComponent(stCode) : ""));
   const wrapRef = useRef<HTMLDivElement>(null);
   const g = data.data?.game;
 
