@@ -117,6 +117,20 @@ export function OwnerLibraryManager() {
     }
   }
 
+  async function removeCover(bookId: string) {
+    if (!confirm("Kitob muqovasi rasmini o‘chirasizmi? (Standart 3D muqova qaytadi)")) return;
+    setBusy("cover-" + bookId);
+    try {
+      await api("/api/v2/owner/library-books/" + encodeURIComponent(bookId) + "/cover", { method: "DELETE" });
+      toast("Muqova rasmi o‘chirildi");
+      data.reload();
+    } catch (err: any) {
+      toast(err?.message || "Muqovani o‘chirishda xatolik");
+    } finally {
+      setBusy("");
+    }
+  }
+
   async function onAddChapter(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!chapterBook) return;
@@ -311,6 +325,11 @@ export function OwnerLibraryManager() {
                     <ImageIcon size={14} /> {b.cover_key ? "Muqovani almashtirish" : "Muqova yuklash"}
                     <input type="file" accept="image/*" hidden onChange={(e) => uploadCover(b.id, e.target.files?.[0] || null)} />
                   </label>
+                  {b.cover_key && (
+                    <button type="button" className="btn secondary tiny" disabled={busy === "cover-" + b.id} onClick={() => removeCover(b.id)}>
+                      Muqovani o‘chirish
+                    </button>
+                  )}
                   <button type="button" className="btn secondary tiny" onClick={() => setChapterBook(b)}>
                     <Plus size={14} /> Bob qo‘shish
                   </button>

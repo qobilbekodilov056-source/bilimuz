@@ -576,6 +576,16 @@ owner.post("/library-books/:id/pricing", async (c) => {
 });
 
 // Owner: kitobga yengil WebP muqova yuklash
+owner.delete("/library-books/:id/cover", async (c) => {
+  const bid = c.req.param("id");
+  const b: any = await first(c.env.DB, "SELECT cover_key FROM library_books WHERE id=?", bid);
+  if (b?.cover_key) {
+    try { await c.env.FILES.delete(String(b.cover_key)); } catch {}
+  }
+  await stmt(c.env.DB, "UPDATE library_books SET cover_key='', updated_at=? WHERE id=?", now(), bid).run();
+  return c.json({ ok: true });
+});
+
 owner.post("/library-books/:id/cover", async (c) => {
   const bid = c.req.param("id");
   const fd = await c.req.formData();
