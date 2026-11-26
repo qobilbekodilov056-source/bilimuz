@@ -304,6 +304,11 @@ function StudioShell() {
           ))}
         </nav>
         <div className="dock-bottom">
+          {account.data?.user?.is_admin && (
+            <NavLink to="/owner" className="dock-link" style={{ background: "#eef2ff", color: "#4338ca", fontWeight: 700, marginBottom: 6 }}>
+              <ShieldCheck size={17} color="#4338ca" /> Admin paneli
+            </NavLink>
+          )}
           <NavLink to="/pricing" className="dock-plan-btn">
           <CreditCard size={16} />
           <span className="dock-plan-copy">

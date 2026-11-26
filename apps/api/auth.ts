@@ -889,8 +889,23 @@ auth.get("/me", async (c) => {
         p.tenantId,
       )
     : null;
+  let isAdmin = false;
+  let adminPermissions: string[] = [];
+  if (p.scope !== "owner") {
+    try {
+      const adm: any = await first(
+        c.env.DB,
+        "SELECT permissions_json FROM platform_admins WHERE user_id=?",
+        p.userId,
+      );
+      if (adm) {
+        isAdmin = true;
+        adminPermissions = JSON.parse(String(adm.permissions_json || "[]"));
+      }
+    } catch {}
+  }
   return c.json({
-    user: { ...u, scope: p.scope },
+    user: { ...u, scope: p.scope, is_admin: isAdmin, admin_permissions: adminPermissions },
     tenant,
     csrf: getCookie(c, "testlab_csrf") || "",
   });

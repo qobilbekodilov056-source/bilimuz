@@ -21,7 +21,13 @@ import {
   ShoppingBag,
   Trash2,
   Upload,
-  Users, Bot, KeyRound } from "lucide-react";
+  Users, Bot, KeyRound, Database,
+  Gift,
+  Pencil,
+  Plus,
+  Search,
+  UserCog,
+} from "lucide-react";
 import { api } from "./api";
 import { OwnerGamesPage } from "./pages-games";
 import { OwnerLibraryManager } from "./pages-owner-library";
@@ -38,17 +44,19 @@ import {
 } from "./ui";
 const base = "/api/v2/owner";
 const sections = [
-  ["", "Umumiy ko‘rinish", Activity],
-  ["teachers", "O‘qituvchilar", Users],
-  ["moderation", "Store moderatsiyasi", ClipboardCheck],
-  ["games", "O‘yinlar", Gamepad2],
-  ["shop", "Do‘kon / Packlar", ShoppingBag],
-  ["library", "Kutubxona & Sotuv", BookOpen],
-  ["billing", "To‘lovlar", CreditCard],
-  ["reports", "Kontent shikoyatlari", ShieldCheck],
-  ["support", "Support inbox", LifeBuoy],
-  ["operations", "Operatsiyalar", Archive],
-  ["settings", "Sozlamalar", Settings],
+  ["", "Umumiy ko‘rinish", Activity, "overview"],
+  ["teachers", "O‘qituvchilar & Referral", Users, "teachers"],
+  ["store-bank", "Umumiy savollar bazasi", Database, "store"],
+  ["moderation", "Moderatsiya navbati", ClipboardCheck, "moderation"],
+  ["games", "O‘yinlar", Gamepad2, "games"],
+  ["shop", "Do‘kon / Packlar", ShoppingBag, "shop"],
+  ["library", "Kutubxona & Sotuv", BookOpen, "library"],
+  ["billing", "To‘lovlar", CreditCard, "billing"],
+  ["reports", "Kontent shikoyatlari", ShieldCheck, "reports"],
+  ["support", "Support inbox", LifeBuoy, "support"],
+  ["admins", "Adminlar", UserCog, "__super__"],
+  ["operations", "Operatsiyalar", Archive, "__super__"],
+  ["settings", "Sozlamalar", Settings, "__super__"],
 ] as const;
 export function OwnerPage() {
   const user = useData("/api/v2/auth/me");
@@ -57,8 +65,18 @@ export function OwnerPage() {
   const section = location.pathname.split("/")[2] || "";
   const [error, setError] = useState<unknown>(null);
   if (user.loading) return <Busy />;
-  if (user.error || user.data?.user.scope !== "owner")
+  const u = user.data?.user;
+  const isSuperOwner = u?.scope === "owner";
+  const isAdmin = !!u?.is_admin;
+  const adminPerms: string[] = Array.isArray(u?.admin_permissions) ? u.admin_permissions : [];
+  if (user.error || (!isSuperOwner && !isAdmin))
     return <Navigate to="/owner/login" replace />;
+  const visibleSections = sections.filter(([, , , perm]) => {
+    if (isSuperOwner) return true;
+    if (perm === "overview") return true;
+    if (perm === "__super__") return false;
+    return adminPerms.includes(perm);
+  });
   async function logout() {
     try {
       await api("/api/v2/auth/logout", { method: "POST", data: {} });
@@ -74,9 +92,9 @@ export function OwnerPage() {
           <img className="brand-logo" src="/logo.png" alt="Bilim UZ" />
           Bilim UZ <b>Owner OS</b>
         </Link>
-        <Pill tone="green">MFA bilan tasdiqlangan</Pill>
+        <Pill tone="green">{isSuperOwner ? "Asosiy Owner (MFA)" : "Tayinlangan Admin"}</Pill>
         <nav>
-          {sections.map(([path, label, Icon]) => (
+          {visibleSections.map(([path, label, Icon]) => (
             <NavLink
               key={path}
               end={!path}
@@ -98,6 +116,10 @@ export function OwnerPage() {
           <OwnerOverview />
         ) : section === "teachers" ? (
           <OwnerTeachers />
+        ) : section === "store-bank" ? (
+          <OwnerStoreBank />
+        ) : section === "admins" && isSuperOwner ? (
+          <OwnerAdmins />
         ) : section === "moderation" ? (
           <Moderation />
         ) : section === "games" ? (
@@ -260,6 +282,7 @@ function OwnerOverview() {
   );
 }
 function OwnerTeachers() {
+  const refData = useData(base + "/referrals");
   const r = useData(base + "/teachers?limit=100"),
     [item, setItem] = useState<any>(null),
     [reason, setReason] = useState(""),
@@ -287,9 +310,39 @@ function OwnerTeachers() {
   return (
     <>
       <PageTitle
-        title="O‘qituvchi workspacelari"
+        title="O‘qituvchi workspacelari & Referral"
         description="Bloklash barcha teacher sessiyalarini bekor qiladi va testga kirishni yopadi."
       />
+      {refData.data && (
+        <div className="panel" style={{ marginBottom: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
+            <strong style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <Gift size={16} color="#059669" /> Referral dasturi statistikasi
+            </strong>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <Pill tone="green">Tasdiqlangan: {refData.data.rewarded_count || 0}</Pill>
+              <Pill tone="amber">Kutilmoqda: {refData.data.pending_count || 0}</Pill>
+              <Pill tone="neutral">Jami berilgan: +{refData.data.total_days || 0} kun Pro</Pill>
+            </div>
+          </div>
+          {refData.data.items?.length > 0 ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 190, overflowY: "auto" }}>
+              {refData.data.items.slice(0, 10).map((rf: any) => (
+                <div key={rf.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 13, padding: "6px 10px", background: "#f8fafc", borderRadius: 8 }}>
+                  <span>
+                    <strong>{rf.referrer_name || rf.referrer_email || rf.ref_code}</strong> → {rf.referred_email || "—"}
+                  </span>
+                  <Pill tone={rf.status === "rewarded" ? "green" : "amber"}>
+                    {rf.status === "rewarded" ? `+${rf.reward_days} kun` : "Email tasdiqlanmagan"}
+                  </Pill>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <small className="muted">Hali referral orqali ro‘yxatdan o‘tganlar yo‘q.</small>
+          )}
+        </div>
+      )}
       <div className="panel">
         {r.loading ? (
           <Busy />
@@ -1588,5 +1641,379 @@ function OwnerBillingPage() {
         </div>
       )}
     </section>
+  );
+}
+
+const ADMIN_PERM_OPTIONS = [
+  ["moderation", "Moderatsiya navbati"],
+  ["store", "Umumiy savollar bazasi"],
+  ["library", "Kutubxona & Pullik testlar"],
+  ["teachers", "O‘qituvchilar & Referral"],
+  ["billing", "To‘lovlar & Kalitlar"],
+  ["games", "O‘yinlar"],
+  ["shop", "Do‘kon / Packlar"],
+  ["reports", "Shikoyatlar"],
+  ["support", "Support inbox"],
+] as const;
+
+function OwnerAdmins() {
+  const data = useData(base + "/admins");
+  const toast = useToast();
+  const [email, setEmail] = useState("");
+  const [note, setNote] = useState("");
+  const [perms, setPerms] = useState<string[]>(["moderation", "store", "library", "support"]);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<unknown>(null);
+
+  function togglePerm(k: string) {
+    setPerms((prev) => (prev.includes(k) ? prev.filter((x) => x !== k) : [...prev, k]));
+  }
+
+  async function assign(e: FormEvent) {
+    e.preventDefault();
+    if (!perms.length) {
+      setErr(new Error("Kamida bitta ruxsat tanlang"));
+      return;
+    }
+    setBusy(true);
+    setErr(null);
+    try {
+      await api(base + "/admins", {
+        method: "POST",
+        data: { email: email.trim(), permissions: perms, note: note.trim() },
+      });
+      toast("Admin tayinlandi!");
+      setEmail("");
+      setNote("");
+      data.reload();
+    } catch (e2) {
+      setErr(e2);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function revoke(uid: string) {
+    if (!confirm("Ushbu foydalanuvchidan admin huquqini olib tashlaysizmi?")) return;
+    setBusy(true);
+    try {
+      await api(base + "/admins/" + encodeURIComponent(uid), { method: "DELETE" });
+      toast("Admin huquqi bekor qilindi");
+      data.reload();
+    } catch (e2) {
+      setErr(e2);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <PageTitle
+        title="Platforma adminlari"
+        description="Asosiy Owner sifatida ishonchli xodimlarga kerakli bo‘limlar bo‘yicha admin ruxsatini berishingiz mumkin."
+      />
+      {!!err && <ErrorBox error={err} />}
+      <section className="panel" style={{ marginBottom: 18 }}>
+        <h3 style={{ marginTop: 0 }}>Yangi admin tayinlash / huquqini yangilash</h3>
+        <form onSubmit={assign} className="form">
+          <div className="row2">
+            <Field label="Foydalanuvchi emaili (tizimda ro‘yxatdan o‘tgan)">
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="xodim@gmail.com"
+              />
+            </Field>
+            <Field label="Lavozim / Izoh">
+              <input
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="Masalan: Kontent moderator"
+              />
+            </Field>
+          </div>
+          <Field label="Ruxsat beriladigan bo‘limlar">
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {ADMIN_PERM_OPTIONS.map(([k, label]) => {
+                const active = perms.includes(k);
+                return (
+                  <button
+                    key={k}
+                    type="button"
+                    className={active ? "btn primary tiny" : "btn secondary tiny"}
+                    onClick={() => togglePerm(k)}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </Field>
+          <button className="btn primary" disabled={busy}>
+            {busy ? "Saqlanmoqda…" : "Admin sifatida saqlash"}
+          </button>
+        </form>
+      </section>
+
+      <section className="panel">
+        <h3 style={{ marginTop: 0 }}>Tayinlangan adminlar ({data.data?.items?.length || 0})</h3>
+        {data.loading ? (
+          <Busy />
+        ) : !data.data?.items?.length ? (
+          <Empty title="Hali admin tayinlanmagan" text="Yuqoridagi forma orqali xodim emailini kiriting." />
+        ) : (
+          <div className="moderation-list">
+            {data.data.items.map((a: any) => (
+              <article className="panel" key={a.user_id} style={{ padding: 14, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                <div>
+                  <strong>{a.display_name}</strong> <small className="muted">({a.email})</small>
+                  {a.note && <small className="muted" style={{ display: "block" }}>{a.note}</small>}
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 6 }}>
+                    {(a.permissions || []).map((pm: string) => (
+                      <Pill key={pm} tone="green">
+                        {ADMIN_PERM_OPTIONS.find(([k]) => k === pm)?.[1] || pm}
+                      </Pill>
+                    ))}
+                  </div>
+                </div>
+                <button type="button" className="btn danger tiny" disabled={busy} onClick={() => void revoke(a.user_id)}>
+                  <Trash2 size={14} /> Huquqni olish
+                </button>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+    </>
+  );
+}
+
+function OwnerStoreBank() {
+  const [q, setQ] = useState("");
+  const [cat, setCat] = useState("");
+  const [lvl, setLvl] = useState("");
+  const [editing, setEditing] = useState<any>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<unknown>(null);
+  const toast = useToast();
+
+  const list = useData(
+    base + `/store-items?q=${encodeURIComponent(q)}&category=${encodeURIComponent(cat)}&level=${encodeURIComponent(lvl)}`,
+  );
+
+  async function saveQuestion(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const correct = String(fd.get("correct") || "A");
+    const payload = {
+      title: String(fd.get("title") || "").trim(),
+      category: String(fd.get("category") || "Umumiy").trim(),
+      topic: String(fd.get("topic") || "").trim(),
+      level: String(fd.get("level") || "medium"),
+      kind: "single",
+      code: "",
+      image_url: "",
+      explanation: String(fd.get("explanation") || "").trim(),
+      points: 1,
+      options: [
+        { id: "A", text: String(fd.get("optA") || "").trim() },
+        { id: "B", text: String(fd.get("optB") || "").trim() },
+        { id: "C", text: String(fd.get("optC") || "").trim() },
+        { id: "D", text: String(fd.get("optD") || "").trim() },
+      ],
+      correct: [correct],
+    };
+    setBusy(true);
+    setErr(null);
+    try {
+      if (editing?.id) {
+        await api(base + "/store-items/" + encodeURIComponent(editing.id), {
+          method: "PUT",
+          data: payload,
+        });
+        toast("Savol yangilandi");
+      } else {
+        await api(base + "/store-items", {
+          method: "POST",
+          data: payload,
+        });
+        toast("Savol umumiy bazaga qo‘shildi!");
+      }
+      setEditing(null);
+      list.reload();
+    } catch (e2) {
+      setErr(e2);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove(itemId: string) {
+    if (!confirm("Ushbu savolni umumiy bazadan o‘chirasizmi?")) return;
+    setBusy(true);
+    try {
+      await api(base + "/store-items/" + encodeURIComponent(itemId), { method: "DELETE" });
+      toast("Savol o‘chirildi");
+      list.reload();
+    } catch (e2) {
+      setErr(e2);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <PageTitle
+        title="Umumiy savollar bazasi"
+        description="Tasdiqlangan barcha umumiy savollar. To‘g‘ridan-to‘g‘ri qo‘shing, tahrirlang yoki o‘chiring."
+        actions={
+          <button
+            type="button"
+            className="btn primary"
+            onClick={() =>
+              setEditing({
+                question: {
+                  title: "",
+                  category: cat || "Matematika",
+                  topic: "",
+                  level: "medium",
+                  explanation: "",
+                  options: [
+                    { id: "A", text: "" },
+                    { id: "B", text: "" },
+                    { id: "C", text: "" },
+                    { id: "D", text: "" },
+                  ],
+                  correct: ["A"],
+                },
+              })
+            }
+          >
+            <Plus size={16} /> Yangi savol qo‘shish
+          </button>
+        }
+      />
+      {!!err && <ErrorBox error={err} />}
+      <div className="panel" style={{ marginBottom: 14 }}>
+        <div className="filters">
+          <div className="search-input">
+            <Search size={16} />
+            <input
+              placeholder="Savol matni bo‘yicha qidirish…"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+            />
+          </div>
+          <select value={cat} onChange={(e) => setCat(e.target.value)}>
+            <option value="">Barcha fanlar</option>
+            {(list.data?.categories || []).map((c: string) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+          <select value={lvl} onChange={(e) => setLvl(e.target.value)}>
+            <option value="">Barcha darajalar</option>
+            <option value="easy">Oson</option>
+            <option value="medium">O‘rta</option>
+            <option value="hard">Qiyin</option>
+          </select>
+        </div>
+      </div>
+
+      {list.loading ? (
+        <Busy />
+      ) : list.error ? (
+        <ErrorBox error={list.error} retry={list.reload} />
+      ) : !list.data?.items?.length ? (
+        <div className="panel"><Empty title="Savollar topilmadi" text="Filtrni tozalang yoki yangi savol qo‘shing." /></div>
+      ) : (
+        <div className="moderation-list">
+          {list.data.items.map((it: any) => (
+            <article className="panel" key={it.id} style={{ padding: 14 }}>
+              <div className="panel-title">
+                <div>
+                  <div style={{ display: "flex", gap: 6, marginBottom: 6, flexWrap: "wrap" }}>
+                    <Pill tone="green">{it.category}</Pill>
+                    <Pill tone="neutral">{it.level}</Pill>
+                  </div>
+                  <strong>{it.question?.title}</strong>
+                  <small className="muted" style={{ display: "block", marginTop: 4 }}>
+                    {(it.question?.options || []).map((o: any) => `${o.id}) ${o.text}`).join(" · ")} · Javob: {(it.question?.correct || []).join(",")}
+                  </small>
+                </div>
+                <div className="actions">
+                  <button type="button" className="btn secondary tiny" onClick={() => setEditing(it)}>
+                    <Pencil size={13} /> Tahrir
+                  </button>
+                  <button type="button" className="btn danger tiny" disabled={busy} onClick={() => void remove(it.id)}>
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+
+      {editing && (
+        <Modal title={editing.id ? "Savolni tahrirlash" : "Umumiy bazaga yangi savol"} close={() => setEditing(null)}>
+          <form onSubmit={saveQuestion} className="form">
+            <Field label="Savol matni">
+              <textarea name="title" required rows={2} defaultValue={editing.question?.title || ""} />
+            </Field>
+            <div className="row2">
+              <Field label="Fan / Pack">
+                <input name="category" required defaultValue={editing.question?.category || ""} />
+              </Field>
+              <Field label="Daraja">
+                <select name="level" defaultValue={editing.question?.level || "medium"}>
+                  <option value="easy">Oson</option>
+                  <option value="medium">O‘rta</option>
+                  <option value="hard">Qiyin</option>
+                </select>
+              </Field>
+            </div>
+            <div className="row2">
+              <Field label="A variant">
+                <input name="optA" required defaultValue={editing.question?.options?.[0]?.text || ""} />
+              </Field>
+              <Field label="B variant">
+                <input name="optB" required defaultValue={editing.question?.options?.[1]?.text || ""} />
+              </Field>
+            </div>
+            <div className="row2">
+              <Field label="C variant">
+                <input name="optC" required defaultValue={editing.question?.options?.[2]?.text || ""} />
+              </Field>
+              <Field label="D variant">
+                <input name="optD" required defaultValue={editing.question?.options?.[3]?.text || ""} />
+              </Field>
+            </div>
+            <div className="row2">
+              <Field label="To‘g‘ri javob">
+                <select name="correct" defaultValue={editing.question?.correct?.[0] || "A"}>
+                  <option value="A">A</option>
+                  <option value="B">B</option>
+                  <option value="C">C</option>
+                  <option value="D">D</option>
+                </select>
+              </Field>
+              <Field label="Mavzu (ixtiyoriy)">
+                <input name="topic" defaultValue={editing.question?.topic || ""} />
+              </Field>
+            </div>
+            <Field label="Izoh (ixtiyoriy)">
+              <input name="explanation" defaultValue={editing.question?.explanation || ""} />
+            </Field>
+            <button className="btn primary full" disabled={busy}>
+              {busy ? "Saqlanmoqda…" : "Saqlash"}
+            </button>
+          </form>
+        </Modal>
+      )}
+    </>
   );
 }

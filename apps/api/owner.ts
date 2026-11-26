@@ -23,9 +23,48 @@ import { gamesOwner } from "./games";
 import { billingOwner } from "./billing";
 import { tgbotOwner } from "./tgbot";
 export const owner = new Hono<AppEnv>();
+const ROUTE_PERM_MAP: Array<[string, string]> = [
+  ["/admins", "__super__"],
+  ["/settings", "__super__"],
+  ["/operations", "__super__"],
+  ["/backup", "__super__"],
+  ["/moderation", "moderation"],
+  ["/market-cards", "moderation"],
+  ["/store-items", "store"],
+  ["/library-books", "library"],
+  ["/library-catalog", "library"],
+  ["/paid-tests", "library"],
+  ["/promo-codes", "library"],
+  ["/billing", "billing"],
+  ["/games", "games"],
+  ["/shop", "shop"],
+  ["/reports", "reports"],
+  ["/support", "support"],
+  ["/teachers", "teachers"],
+  ["/referrals", "teachers"],
+  ["/tgbot", "teachers"],
+];
+
 owner.use("*", async (c, next) => {
   const p = await authenticate(c);
-  if (p.scope !== "owner") fail("Owner ruxsati kerak", 403);
+  if (p.scope !== "owner") {
+    let perms: string[] | null = null;
+    try {
+      const adm: any = await first(
+        c.env.DB,
+        "SELECT permissions_json FROM platform_admins WHERE user_id=?",
+        p.userId,
+      );
+      if (adm) perms = JSON.parse(String(adm.permissions_json || "[]"));
+    } catch {}
+    if (!perms) fail("Owner yoki Admin ruxsati kerak", 403);
+    const subPath = c.req.path.replace(/^\/api\/v2\/owner/, "") || "/";
+    const matched = ROUTE_PERM_MAP.find(([prefix]) => subPath.startsWith(prefix));
+    if (matched) {
+      if (matched[1] === "__super__") fail("Bu bo‘lim faqat asosiy Owner uchun", 403);
+      if (!perms.includes(matched[1])) fail("Sizda bu bo‘lim uchun admin ruxsati yo‘q", 403);
+    }
+  }
   if (!["GET", "HEAD"].includes(c.req.method)) await csrf(c);
   await rate(c, "owner", 120, 60, p.userId);
   await next();
@@ -168,6 +207,231 @@ owner.post("/teachers/:id/status", async (c) => {
   ]);
   return c.json({ ok: true });
 });
+owner.get("/admins", async (c) => {
+  const items = await rows(
+    c.env.DB,
+    `SELECT a.user_id, a.permissions_json, a.note, a.created_at, u.display_name, u.email, u.status
+     FROM platform_admins a
+     JOIN users u ON u.id=a.user_id
+     ORDER BY a.created_at DESC`,
+  );
+  return c.json({
+    items: items.map((r: any) => ({
+      ...r,
+      permissions: JSON.parse(String(r.permissions_json || "[]")),
+    })),
+  });
+});
+
+owner.post("/admins", async (c) => {
+  const p = c.get("principal");
+  const d = await body(
+    c,
+    z.object({
+      email: z.string().trim().email().transform((v) => v.toLowerCase()),
+      permissions: z.array(z.string().min(1)).min(1).max(12),
+      note: z.string().trim().max(180).optional().default(""),
+    }).strict(),
+  );
+  const u: any = await first(
+    c.env.DB,
+    "SELECT id, display_name, email, role, status FROM users WHERE email=?",
+    d.email,
+  );
+  if (!u) fail("Bunday email bilan foydalanuvchi topilmadi", 404);
+  if (u.status !== "active") fail("Foydalanuvchi faol holatda emas", 400);
+  if (u.role === "platform_owner") fail("Asosiy Owner allaqachon to‘liq huquqqa ega", 400);
+  await stmt(
+    c.env.DB,
+    `INSERT INTO platform_admins(user_id, permissions_json, assigned_by, note, created_at)
+     VALUES(?, ?, ?, ?, ?)
+     ON CONFLICT(user_id) DO UPDATE SET permissions_json=excluded.permissions_json, note=excluded.note`,
+    u.id,
+    json(d.permissions),
+    p.userId,
+    d.note,
+    now(),
+  ).run();
+  await audit(c, "assign_admin", "user", u.id, d.permissions.join(","));
+  return c.json({ ok: true, user_id: u.id, display_name: u.display_name });
+});
+
+owner.delete("/admins/:userId", async (c) => {
+  const uid = c.req.param("userId");
+  await stmt(c.env.DB, "DELETE FROM platform_admins WHERE user_id=?", uid).run();
+  await audit(c, "revoke_admin", "user", uid, "Admin huquqi bekor qilindi");
+  return c.json({ ok: true });
+});
+
+owner.get("/referrals", async (c) => {
+  let items: any[] = [];
+  try {
+    items = await rows(
+      c.env.DB,
+      `SELECT r.*, t.name referrer_name, u.email referrer_email
+       FROM teacher_referrals r
+       LEFT JOIN tenants t ON t.id=r.referrer_tenant_id
+       LEFT JOIN users u ON u.id=r.referrer_user_id
+       ORDER BY r.created_at DESC LIMIT 100`,
+    );
+  } catch {}
+  const rewarded = items.filter((x) => x.status === "rewarded");
+  return c.json({
+    total: items.length,
+    rewarded_count: rewarded.length,
+    pending_count: items.length - rewarded.length,
+    total_days: rewarded.reduce((a, x) => a + Number(x.reward_days || 15), 0),
+    items,
+  });
+});
+
+owner.get("/store-items", async (c) => {
+  const q = (c.req.query("q") || "").trim().toLowerCase();
+  const category = (c.req.query("category") || "").trim();
+  const level = (c.req.query("level") || "").trim();
+  const all = await rows(
+    c.env.DB,
+    `SELECT id, submission_id, public_content_json, category, level, published_at
+     FROM store_items
+     WHERE status='approved'
+       AND (?='' OR COALESCE(NULLIF(TRIM(category),''),'Umumiy')=?)
+       AND (?='' OR level=?)
+     ORDER BY published_at DESC LIMIT 200`,
+    category,
+    category,
+    level,
+    level,
+  );
+  const cats = await rows(
+    c.env.DB,
+    "SELECT DISTINCT COALESCE(NULLIF(TRIM(category),''),'Umumiy') cat FROM store_items WHERE status='approved' ORDER BY cat",
+  );
+  const parsed = all
+    .map((r: any) => {
+      try {
+        const cObj = JSON.parse(r.public_content_json);
+        return {
+          id: r.id,
+          submission_id: r.submission_id,
+          category: r.category,
+          level: r.level,
+          published_at: r.published_at,
+          question: cObj.question,
+        };
+      } catch {
+        return null;
+      }
+    })
+    .filter((x: any) => x && (!q || JSON.stringify(x.question).toLowerCase().includes(q)));
+  return c.json({ items: parsed, categories: cats.map((x: any) => x.cat) });
+});
+
+owner.post("/store-items", async (c) => {
+  const p = c.get("principal");
+  const d = await body(c, questionSchema);
+  const qJson = json(d);
+  const fp = await digest(qJson);
+  const t = now();
+  const tid = "tenant_bilimuz_official";
+  await stmt(
+    c.env.DB,
+    `INSERT OR IGNORE INTO tenants(id, owner_user_id, slug, name, status, quotas_json, created_at)
+     VALUES(?, ?, 'bilimuz-official', 'Bilim UZ Rasmiy Bazasi', 'active', '{"questions":50000,"students":50000}', ?)`,
+    tid,
+    p.userId,
+    t,
+  ).run();
+
+  const qid = "q_own_" + id().slice(0, 12);
+  const subId = "sub_own_" + id().slice(0, 12);
+  const itemId = "st_own_" + id().slice(0, 12);
+  const pubContent = json({
+    question: d,
+    license: "CC-BY-4.0",
+    attribution: "Bilim UZ Rasmiy Bazasi",
+    source_version: 1,
+  });
+
+  await c.env.DB.batch([
+    stmt(
+      c.env.DB,
+      "INSERT OR IGNORE INTO questions(id,tenant_id,title,category,topic,level,kind,content_json,fingerprint,provenance_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+      qid,
+      tid,
+      d.title,
+      d.category,
+      d.topic,
+      d.level,
+      d.kind,
+      qJson,
+      fp,
+      "{}",
+      t,
+      t,
+    ),
+    stmt(
+      c.env.DB,
+      "INSERT OR IGNORE INTO store_submissions(id,tenant_id,question_id,source_version,content_json,fingerprint,consent_at,license,attribution,moderation_status,reviewer_id,reviewed_at,reason) VALUES(?,?,?,1,?,?,?,'CC-BY-4.0','Bilim UZ Rasmiy Bazasi','approved',?,?,'Owner qo‘shdi')",
+      subId,
+      tid,
+      qid,
+      pubContent,
+      fp,
+      t,
+      p.userId,
+      t,
+    ),
+    stmt(
+      c.env.DB,
+      "INSERT INTO store_items(id,submission_id,publication_version,public_content_json,category,level,fingerprint,status,published_at) VALUES(?,?,1,?,?,?,?,'approved',?)",
+      itemId,
+      subId,
+      pubContent,
+      d.category,
+      d.level,
+      fp,
+      t,
+    ),
+  ]);
+  return c.json({ ok: true, id: itemId }, 201);
+});
+
+owner.put("/store-items/:id", async (c) => {
+  const itemId = c.req.param("id");
+  const cur: any = await first(c.env.DB, "SELECT * FROM store_items WHERE id=?", itemId);
+  if (!cur) fail("Savol topilmadi", 404);
+  const d = await body(c, questionSchema);
+  const prev = JSON.parse(cur.public_content_json || "{}");
+  const pubContent = json({
+    ...prev,
+    question: d,
+    source_version: Number(prev.source_version || 1) + 1,
+  });
+  const fp = await digest(json(d));
+  await stmt(
+    c.env.DB,
+    "UPDATE store_items SET public_content_json=?, category=?, level=?, fingerprint=? WHERE id=?",
+    pubContent,
+    d.category,
+    d.level,
+    fp,
+    itemId,
+  ).run();
+  return c.json({ ok: true });
+});
+
+owner.delete("/store-items/:id", async (c) => {
+  const itemId = c.req.param("id");
+  const cur: any = await first(c.env.DB, "SELECT submission_id FROM store_items WHERE id=?", itemId);
+  if (!cur) fail("Savol topilmadi", 404);
+  await c.env.DB.batch([
+    stmt(c.env.DB, "DELETE FROM store_reports WHERE item_id=?", itemId),
+    stmt(c.env.DB, "DELETE FROM store_items WHERE id=?", itemId),
+    stmt(c.env.DB, "UPDATE store_submissions SET moderation_status='revoked' WHERE id=?", cur.submission_id),
+  ]);
+  return c.json({ ok: true });
+});
+
 owner.get("/moderation", async (c) => {
   const status = c.req.query("status") || "pending";
   if (
