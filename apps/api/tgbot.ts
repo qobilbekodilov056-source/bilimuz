@@ -168,6 +168,77 @@ export function notifyParentNewAssignment(
   );
 }
 
+// 3b. New test card activated notification
+export async function sendCardTelegramBlast(
+  c: Ctx,
+  tenantId: string,
+  groupId: string | null,
+  title: string,
+  slug: string,
+  durationMinutes: number,
+  questionCount: number,
+  hasPin: boolean,
+) {
+  if (!c.env.TELEGRAM_BOT_TOKEN) return { sent: 0, total: 0, configured: false };
+  const links = await rows(
+    c.env.DB,
+    `SELECT l.chat_id, s.name, s.student_code
+     FROM student_telegram_links l
+     JOIN students s ON s.id = l.student_id
+     WHERE s.tenant_id=? AND s.status='active' AND (? IS NULL OR s.group_id=?)
+     LIMIT 150`,
+    tenantId,
+    groupId,
+    groupId,
+  );
+  const origin = c.env.APP_ORIGIN || "https://bilimuz.dpdns.org";
+  let sent = 0;
+  for (const link of links) {
+    const msg = [
+      "📝 <b>Bilim UZ · Yangi test ochildi!</b>",
+      `👤 O‘quvchi: <b>${escTg(link.name)}</b>`,
+      `📘 Test: <b>${escTg(title)}</b>`,
+      `📊 Savollar: <b>${questionCount} ta</b> · ⏱ Vaqt: <b>${durationMinutes} daqiqa</b>`,
+      `🔑 Kod: <code>${escTg(slug)}</code>${hasPin ? " (PIN-kodli)" : ""}`,
+      `🔗 <a href="${origin}/t/${encodeURIComponent(slug)}">Testni boshlash</a>`,
+    ].join("\n");
+    try {
+      await sendTgMessage(c.env, link.chat_id, msg);
+      sent++;
+    } catch {}
+  }
+  return { sent, total: links.length, configured: true };
+}
+
+export function notifyParentNewTestCard(
+  c: Ctx,
+  tenantId: string,
+  groupId: string | null,
+  title: string,
+  slug: string,
+  durationMinutes: number,
+  questionCount: number,
+  hasPin: boolean,
+) {
+  if (!c.env.TELEGRAM_BOT_TOKEN) return;
+  runBg(
+    c,
+    (async () => {
+      if (!(await isUltraPlan(c.env, tenantId))) return;
+      await sendCardTelegramBlast(
+        c,
+        tenantId,
+        groupId,
+        title,
+        slug,
+        durationMinutes,
+        questionCount,
+        hasPin,
+      );
+    })(),
+  );
+}
+
 // 4. Homework graded notification
 export function notifyParentHomeworkGraded(
   c: Ctx,

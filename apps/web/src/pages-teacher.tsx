@@ -2162,7 +2162,27 @@ export function Cards() {
       encodeURIComponent(useDebounce(archSearch)),
   );
   const toast = useToast();
-  async function action(card: any, kind: string) {
+  async function sendTgNotify(card: any) {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api<any>(base + "/cards/" + encodeURIComponent(card.id) + "/notify-tg", {
+        method: "POST",
+        data: {},
+      });
+      toast(
+        res.sent > 0
+          ? `${res.sent} ta ulangan Telegram chatga test xabari yuborildi!`
+          : "Bu guruhda hali Telegramga ulangan o‘quvchi/ota-ona topilmadi.",
+      );
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+    async function action(card: any, kind: string) {
     setBusy(true);
     setError(null);
     try {
@@ -2456,6 +2476,17 @@ export function Cards() {
                       onClick={() => void action(r, "archived")}
                     >
                       Arxiv
+                    </button>
+                  )}
+                  {r.status === "active" && (
+                    <button
+                      type="button"
+                      className="btn secondary tiny"
+                      disabled={busy}
+                      onClick={() => void sendTgNotify(r)}
+                      title="Guruhdagi ulangan Telegram chatlarga test havolasini yuborish"
+                    >
+                      <Send size={13} color="#0284c7" /> Telegram
                     </button>
                   )}
                   <button

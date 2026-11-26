@@ -28,7 +28,7 @@ import {
 } from "./core";
 import { authenticate, csrf } from "./auth";
 import { billingTeacher, getEffectivePlan } from "./billing";
-import { notifyParentAttendance } from "./tgbot";
+import { notifyParentAttendance, notifyParentNewTestCard, sendCardTelegramBlast } from "./tgbot";
 import { insertQuestion, questionRecord, questionView } from "./questions";
 import { toCsv } from "./spreadsheet";
 import { libraryTeacher } from "./library";
@@ -700,8 +700,51 @@ teacher.post("/cards/:id/status", async (c) => {
       r.id,
     ).run();
   }
+  if (d.status === "active" && !r.published_version) {
+    try {
+      const s = JSON.parse(r.settings_json || "{}") as CardSettings;
+      notifyParentNewTestCard(
+        c,
+        tid,
+        r.group_id || null,
+        r.title,
+        r.slug,
+        Number(s.duration_minutes || 20),
+        Number(s.question_count || 0),
+        Boolean(r.pin_hash),
+      );
+    } catch {}
+  }
   return c.json({ ok: true });
 });
+
+teacher.post("/cards/:id/notify-tg", async (c) => {
+  const tid = c.get("principal").tenantId!;
+  const plan = await getEffectivePlan(c.env.DB, tid);
+  if (plan.id === "free") {
+    fail("Telegram xabarnoma yuborish pulli tariflar (Ustoz Pro yoki Ultra) uchun ochiq.", 403);
+  }
+  const r = await scoped(c, "cards", c.req.param("id"));
+  if (r.status !== "active" || !r.published_version) {
+    fail("Avval test kartasini faollashtiring", 422);
+  }
+  const s = JSON.parse(r.settings_json || "{}") as CardSettings;
+  const res = await sendCardTelegramBlast(
+    c,
+    tid,
+    r.group_id || null,
+    r.title,
+    r.slug,
+    Number(s.duration_minutes || 20),
+    Number(s.question_count || 0),
+    Boolean(r.pin_hash),
+  );
+  if (!res.configured) {
+    fail("Platformada Telegram bot hali ulanmagan", 503);
+  }
+  return c.json({ ok: true, sent: res.sent, total: res.total });
+});
+
 teacher.post("/cards/:id/duplicate", async (c) => {
   const r = await scoped(c, "cards", c.req.param("id")),
     cid = id();
