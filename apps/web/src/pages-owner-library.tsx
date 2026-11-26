@@ -40,6 +40,8 @@ export function OwnerLibraryManager() {
   const toast = useToast();
   const [tab, setTab] = useState<"books" | "orders" | "tests" | "test_orders" | "promos">("books");
   const [createOpen, setCreateOpen] = useState(false);
+  const [testCreateOpen, setTestCreateOpen] = useState(false);
+  const packs = useData("/api/v2/store/packs");
   const [chapterBook, setChapterBook] = useState<any>(null);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState<unknown>(null);
@@ -50,7 +52,37 @@ export function OwnerLibraryManager() {
   const testOrders: any[] = testsData.data?.orders || [];
   const promos: any[] = promoData.data?.items || [];
 
-  async function onCreateBook(e: FormEvent<HTMLFormElement>) {
+  async function onCreateTestFromStore(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    setBusy("create-test");
+    setError(null);
+    try {
+      const res = await api<any>("/api/v2/owner/paid-tests/create", {
+        method: "POST",
+        data: {
+          title: String(fd.get("title") || ""),
+          category: String(fd.get("category") || ""),
+          level: String(fd.get("level") || ""),
+          question_count: Number(fd.get("question_count") || 15),
+          duration_minutes: Number(fd.get("duration_minutes") || 20),
+          pass_percent: Number(fd.get("pass_percent") || 70),
+          price_uzs: Number(fd.get("price_uzs") || 0),
+          description: String(fd.get("description") || ""),
+        },
+      });
+      toast(`Test yaratildi (${res.question_count} savol · ${res.slug}) va /practice ga chiqdi!`);
+      setTestCreateOpen(false);
+      testsData.reload();
+      setTab("tests");
+    } catch (err: any) {
+      setError(err);
+    } finally {
+      setBusy("");
+    }
+  }
+
+    async function onCreateBook(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setBusy("create");
     setError(null);
@@ -277,9 +309,14 @@ export function OwnerLibraryManager() {
         title="Kutubxona, muqovalar va pullik qo‘llanmalar"
         description="Rasmiy darslik va IELTS qo‘llanmalarini joylang, yengil WebP muqova qo‘ying va narx belgilang."
         actions={
-          <button type="button" className="btn primary" onClick={() => setCreateOpen(true)}>
-            <Plus size={16} /> Yangi kitob / qo‘llanma
-          </button>
+          <div className="actions">
+            <button type="button" className="btn secondary" onClick={() => setTestCreateOpen(true)}>
+              <Target size={16} color="#0c8066" /> Bazadan test yaratish
+            </button>
+            <button type="button" className="btn primary" onClick={() => setCreateOpen(true)}>
+              <Plus size={16} /> Yangi kitob / qo‘llanma
+            </button>
+          </div>
         }
       />
       {!!error && <ErrorBox error={error} />}
@@ -562,7 +599,62 @@ export function OwnerLibraryManager() {
         </Modal>
       )}
 
-      {chapterBook && (
+      {testCreateOpen && (
+        <Modal title="Umumiy savollar bazasidan test yaratish" close={() => setTestCreateOpen(false)}>
+          <form onSubmit={onCreateTestFromStore} className="form">
+            <Field label="Test nomi">
+              <input name="title" required placeholder="Masalan: DTM Matematika — 1-bosqich" />
+            </Field>
+            <div className="row2">
+              <Field label="Fan / Pack (Umumiy bazadan)">
+                <select name="category" required defaultValue={packs.data?.packs?.[0]?.category || ""}>
+                  {!(packs.data?.packs || []).length ? (
+                    <option value="Kompyuter savodxonligi">Kompyuter savodxonligi</option>
+                  ) : (
+                    (packs.data?.packs || []).map((pk: any) => (
+                      <option key={pk.category} value={pk.category}>
+                        {pk.category} ({pk.total} ta savol)
+                      </option>
+                    ))
+                  )}
+                </select>
+              </Field>
+              <Field label="Daraja">
+                <select name="level" defaultValue="">
+                  <option value="">Aralash (barchasi)</option>
+                  <option value="easy">Oson</option>
+                  <option value="medium">O‘rta</option>
+                  <option value="hard">Qiyin</option>
+                </select>
+              </Field>
+            </div>
+            <div className="row2">
+              <Field label="Savollar soni">
+                <input name="question_count" type="number" min={1} max={100} defaultValue={15} />
+              </Field>
+              <Field label="Vaqt (daqiqa)">
+                <input name="duration_minutes" type="number" min={1} max={240} defaultValue={20} />
+              </Field>
+            </div>
+            <div className="row2">
+              <Field label="O‘tish foizi (%)">
+                <input name="pass_percent" type="number" min={1} max={100} defaultValue={70} />
+              </Field>
+              <Field label="Narx (so‘m, 0 = Bepul)">
+                <input name="price_uzs" type="number" min={0} step={1000} defaultValue={0} />
+              </Field>
+            </div>
+            <Field label="Qisqa tavsif">
+              <textarea name="description" rows={2} placeholder="Test nimalarni tekshiradi…" />
+            </Field>
+            <button className="btn primary full" disabled={busy === "create-test"}>
+              {busy === "create-test" ? "Yaratilmoqda…" : "Test yaratish va /practice ga chiqarish"}
+            </button>
+          </form>
+        </Modal>
+      )}
+
+            {chapterBook && (
         <Modal title={`Bob qo‘shish: ${chapterBook.title}`} close={() => setChapterBook(null)}>
           <form onSubmit={onAddChapter} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <Field label="Bob sarlavhasi">

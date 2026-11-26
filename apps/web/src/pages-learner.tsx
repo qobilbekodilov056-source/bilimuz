@@ -43,7 +43,7 @@ export function LearnerBillingStandalone() {
         const r = await api("/api/v2/auth/learner-billing/order/" + encodeURIComponent(order.order_id) + "/status");
         if (r?.paid) {
           setOrder({ ...order, paid: true });
-          toast("🎉 To‘lov tasdiqlandi! Abituriyent obunangiz faollashdi!");
+          toast("To‘lov tasdiqlandi! Abituriyent obunangiz faollashdi!");
           st.reload();
         }
       } catch {}

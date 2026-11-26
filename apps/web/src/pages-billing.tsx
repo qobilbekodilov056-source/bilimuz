@@ -105,7 +105,7 @@ export function TeacherBillingPage() {
     if (found && found.status !== activeOrder.status) {
       setActiveOrder(found);
       if (found.status === "paid") {
-        toast("🎉 To‘lov avtomatik tasdiqlandi! Tarifingiz faollashdi.");
+        toast("To‘lov avtomatik tasdiqlandi! Tarifingiz faollashdi.");
       }
     }
   }, [data.data?.orders, activeOrder, toast]);
@@ -138,7 +138,7 @@ export function TeacherBillingPage() {
         method: "POST",
         data: { code: productKey.trim() },
       });
-      toast(`🎉 Kalit faollashtirildi! ${res.plan.toUpperCase()} (${res.days} kun) yoqildi.`);
+      toast(`Kalit faollashtirildi! ${res.plan.toUpperCase()} (${res.days} kun) yoqildi.`);
       setProductKey("");
       data.reload();
     } catch (err) {
@@ -376,7 +376,7 @@ export function TeacherBillingPage() {
                   </button>
                 ) : isCurrent && daysLeft > 5 ? (
                   <button type="button" className="bp-cta-btn is-soft" disabled>
-                    ✓ Faol tarif ({daysLeft} kun qoldi)
+                    Faol tarif ({daysLeft} kun qoldi)
                   </button>
                 ) : (
                   <button

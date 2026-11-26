@@ -198,7 +198,7 @@ export function LandingPage() {
             <span className="lp-float-orb orb-1" aria-hidden="true"><Sparkles size={15} /></span>
             <span className="lp-float-orb orb-2" aria-hidden="true"><ShieldCheck size={15} /></span>
             <span className="lp-float-chip chip-1" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Award size={15} color="#d97706" /> QR Sertifikat</span>
-            <span className="lp-float-chip chip-2">⚡ Tezkor tahlil</span>
+            <span className="lp-float-chip chip-2" style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><Zap size={13} color="#d97706" /> Tezkor tahlil</span>
 
             <div className="lp-test-card">
               <div className="lp-test-card-head">

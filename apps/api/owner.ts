@@ -4,6 +4,7 @@ import type { AppEnv } from "./types";
 import {
   audit,
   body,
+  digest,
   fail,
   first,
   id,
@@ -620,6 +621,166 @@ owner.get("/paid-tests", async (c) => {
      ORDER BY o.created_at DESC LIMIT 100`,
   );
   return c.json({ cards, orders });
+});
+
+owner.post("/paid-tests/create", async (c) => {
+  const p = c.get("principal");
+  const d = await body(
+    c,
+    z.object({
+      title: z.string().trim().min(2).max(160),
+      category: z.string().trim().min(1).max(120),
+      level: z.enum(["", "easy", "medium", "hard"]).optional().default(""),
+      question_count: z.coerce.number().int().min(1).max(100).default(15),
+      duration_minutes: z.coerce.number().int().min(1).max(240).default(20),
+      pass_percent: z.coerce.number().int().min(1).max(100).default(70),
+      price_uzs: z.coerce.number().int().min(0).max(5000000).default(0),
+      description: z.string().trim().max(500).optional().default(""),
+    }).strict(),
+  );
+
+  const items = await rows(
+    c.env.DB,
+    `SELECT id, public_content_json, fingerprint
+     FROM store_items
+     WHERE status='approved'
+       AND COALESCE(NULLIF(TRIM(category), ''), 'Umumiy')=?
+       AND (?='' OR level=?)
+     ORDER BY published_at DESC
+     LIMIT ?`,
+    d.category,
+    d.level,
+    d.level,
+    d.question_count,
+  );
+  if (!items.length) {
+    fail("Tanlangan fan/packda tasdiqlangan savollar topilmadi", 404);
+  }
+
+  const t = now();
+  const tid = "tenant_bilimuz_official";
+  await stmt(
+    c.env.DB,
+    `INSERT OR IGNORE INTO tenants(id, owner_user_id, slug, name, status, quotas_json, created_at)
+     VALUES(?, ?, 'bilimuz-official', 'Bilim UZ Rasmiy Bazasi', 'active', '{"questions":50000,"students":50000}', ?)`,
+    tid,
+    p.userId,
+    t,
+  ).run();
+
+  const versionIds: string[] = [];
+  for (const item of items) {
+    const parsed = JSON.parse(item.public_content_json);
+    const q = questionSchema.parse(parsed.question);
+    const qJson = json(q);
+    const fp = item.fingerprint || (await digest(qJson));
+    const existing: any = await first(
+      c.env.DB,
+      "SELECT id, content_version FROM questions WHERE tenant_id=? AND fingerprint=? LIMIT 1",
+      tid,
+      fp,
+    );
+    if (existing) {
+      const vRow: any = await first(
+        c.env.DB,
+        "SELECT id FROM question_versions WHERE tenant_id=? AND question_id=? AND version=? LIMIT 1",
+        tid,
+        existing.id,
+        existing.content_version,
+      );
+      if (vRow) {
+        versionIds.push(vRow.id);
+        continue;
+      }
+    }
+    const qid = id();
+    const vid = id();
+    await c.env.DB.batch([
+      stmt(
+        c.env.DB,
+        "INSERT INTO questions(id,tenant_id,title,category,topic,level,kind,content_json,fingerprint,provenance_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+        qid,
+        tid,
+        q.title,
+        q.category,
+        q.topic,
+        q.level,
+        q.kind,
+        qJson,
+        fp,
+        json({ store_item_id: item.id }),
+        t,
+        t,
+      ),
+      stmt(
+        c.env.DB,
+        "INSERT INTO question_versions VALUES(?,?,?,?,?,?)",
+        vid,
+        tid,
+        qid,
+        1,
+        qJson,
+        t,
+      ),
+    ]);
+    versionIds.push(vid);
+  }
+
+  const cardId = id();
+  const slug = "UZ-" + Math.random().toString(36).slice(2, 7).toUpperCase();
+  const settingsObj = {
+    title: d.title,
+    description: d.description || `${d.category} bo‘yicha rasmiy test (${versionIds.length} ta savol)`,
+    category: d.category,
+    topic: "",
+    mode: "manual",
+    question_count: versionIds.length,
+    mix: { easy: 34, medium: 33, hard: 33 },
+    selected_ids: [],
+    duration_minutes: d.duration_minutes,
+    pass_percent: d.pass_percent,
+    shuffle_questions: true,
+    shuffle_options: true,
+    access_mode: "open",
+    pin: "",
+    group_id: null,
+    max_attempts: 5,
+    show_explanations: true,
+    reward: "",
+  };
+
+  await c.env.DB.batch([
+    stmt(
+      c.env.DB,
+      `INSERT INTO cards(id,tenant_id,slug,title,settings_json,pin_hash,group_id,status,published_version,market_status,price_uzs,created_at,updated_at)
+       VALUES(?,?,?,?,?,NULL,NULL,'active',1,'approved',?,?,?)`,
+      cardId,
+      tid,
+      slug,
+      d.title,
+      json(settingsObj),
+      d.price_uzs,
+      t,
+      t,
+    ),
+    stmt(
+      c.env.DB,
+      "INSERT INTO card_releases VALUES(?,?,1,?,?)",
+      tid,
+      cardId,
+      json(settingsObj),
+      t,
+    ),
+    stmt(
+      c.env.DB,
+      "INSERT INTO card_questions SELECT ?,?,1,json_extract(value,'$.vid'),CAST(key AS INTEGER)+1 FROM json_each(?)",
+      tid,
+      cardId,
+      json(versionIds.map((vid) => ({ vid }))),
+    ),
+  ]);
+
+  return c.json({ ok: true, id: cardId, slug, question_count: versionIds.length }, 201);
 });
 
 owner.post("/paid-tests/:cardId/pricing", async (c) => {
