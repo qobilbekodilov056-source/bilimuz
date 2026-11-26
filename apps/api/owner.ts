@@ -591,6 +591,48 @@ owner.post("/library-books/:id/cover", async (c) => {
 });
 
 // Owner: kitob buyurtmasini qo‘lda tasdiqlash / rad etish
+
+owner.get("/paid-tests", async (c) => {
+  const cards = await rows(
+    c.env.DB,
+    `SELECT c.id, c.slug, c.title, c.price_uzs, c.market_solves, c.updated_at, t.name tenant_name,
+      (SELECT COUNT(*) FROM test_card_orders o WHERE o.card_id=c.id AND o.status='paid') sales_count
+     FROM cards c
+     JOIN tenants t ON t.id=c.tenant_id
+     WHERE c.status='active' AND c.group_id IS NULL AND c.settings_json LIKE '%"access_mode":"open"%'
+     ORDER BY c.updated_at DESC LIMIT 200`,
+  );
+  const orders = await rows(
+    c.env.DB,
+    `SELECT o.*, c.title card_title
+     FROM test_card_orders o
+     JOIN cards c ON c.id=o.card_id
+     ORDER BY o.created_at DESC LIMIT 100`,
+  );
+  return c.json({ cards, orders });
+});
+
+owner.post("/paid-tests/:cardId/pricing", async (c) => {
+  const cid = c.req.param("cardId");
+  const d = await body(c, z.object({ price_uzs: z.coerce.number().int().min(0).max(5000000) }).strict());
+  await stmt(c.env.DB, "UPDATE cards SET price_uzs=?, updated_at=? WHERE id=?", d.price_uzs, now(), cid).run();
+  return c.json({ ok: true, price_uzs: d.price_uzs });
+});
+
+owner.post("/test-orders/:oid/decision", async (c) => {
+  const oid = c.req.param("oid");
+  const d = await body(c, z.object({ status: z.enum(["paid", "rejected"]) }).strict());
+  await stmt(
+    c.env.DB,
+    "UPDATE test_card_orders SET status=?, paid_at=?, tx_note=? WHERE id=?",
+    d.status,
+    d.status === "paid" ? now() : null,
+    d.status === "paid" ? "Owner tasdiqladi" : "Owner rad etdi",
+    oid,
+  ).run();
+  return c.json({ ok: true });
+});
+
 owner.post("/library-orders/:oid/decision", async (c) => {
   const oid = c.req.param("oid");
   const d = await body(c, z.object({ status: z.enum(["paid", "rejected"]) }).strict());

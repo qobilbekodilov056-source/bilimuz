@@ -24,8 +24,9 @@ async function compressCoverToWebp(file: File): Promise<File> {
 
 export function OwnerLibraryManager() {
   const data = useData("/api/v2/owner/library-catalog");
+  const testsData = useData("/api/v2/owner/paid-tests");
   const toast = useToast();
-  const [tab, setTab] = useState<"books" | "orders">("books");
+  const [tab, setTab] = useState<"books" | "orders" | "tests" | "test_orders">("books");
   const [createOpen, setCreateOpen] = useState(false);
   const [chapterBook, setChapterBook] = useState<any>(null);
   const [busy, setBusy] = useState("");
@@ -33,6 +34,8 @@ export function OwnerLibraryManager() {
 
   const items: any[] = data.data?.items || [];
   const orders: any[] = data.data?.orders || [];
+  const paidCards: any[] = testsData.data?.cards || [];
+  const testOrders: any[] = testsData.data?.orders || [];
 
   async function onCreateBook(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -150,6 +153,42 @@ export function OwnerLibraryManager() {
     }
   }
 
+
+  async function updateTestPrice(card: any) {
+    const raw = prompt(`«${card.title}» testi narxini kiriting (so‘m, 0 = Bepul):`, String(card.price_uzs || 0));
+    if (raw === null) return;
+    const price = Math.max(0, Math.round(Number(raw) || 0));
+    setBusy("tprice-" + card.id);
+    try {
+      await api("/api/v2/owner/paid-tests/" + encodeURIComponent(card.id) + "/pricing", {
+        method: "POST",
+        data: { price_uzs: price },
+      });
+      toast(price > 0 ? `Test narxi ${price.toLocaleString("uz-UZ")} so‘m qilindi` : "Test bepul qilindi");
+      testsData.reload();
+    } catch (err: any) {
+      toast(err?.message || "Xatolik");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function decideTestOrder(oid: string, status: "paid" | "rejected") {
+    setBusy("tord-" + oid);
+    try {
+      await api("/api/v2/owner/test-orders/" + encodeURIComponent(oid) + "/decision", {
+        method: "POST",
+        data: { status },
+      });
+      toast(status === "paid" ? "Test xaridi tasdiqlandi!" : "Buyurtma rad etildi");
+      testsData.reload();
+    } catch (err: any) {
+      toast(err?.message || "Xatolik");
+    } finally {
+      setBusy("");
+    }
+  }
+
   return (
     <>
       <PageTitle
@@ -169,6 +208,12 @@ export function OwnerLibraryManager() {
         </button>
         <button type="button" className={tab === "orders" ? "btn primary tiny" : "btn secondary tiny"} onClick={() => setTab("orders")}>
           <Coins size={14} /> Kitob xaridlari ({orders.length})
+        </button>
+        <button type="button" className={tab === "tests" ? "btn primary tiny" : "btn secondary tiny"} onClick={() => setTab("tests")}>
+          🎯 Pullik testlar ({paidCards.length})
+        </button>
+        <button type="button" className={tab === "test_orders" ? "btn primary tiny" : "btn secondary tiny"} onClick={() => setTab("test_orders")}>
+          💳 Test xaridlari ({testOrders.length})
         </button>
       </div>
 
@@ -212,6 +257,76 @@ export function OwnerLibraryManager() {
                 </div>
               </article>
             ))}
+          </div>
+        )
+      ) : tab === "tests" ? (
+        !paidCards.length ? (
+          <div className="panel"><Empty title="Ochiq testlar topilmadi" text="Ochiq mashq rejimida (access_mode: open) yaratilgan testlar shu yerda chiqadi." /></div>
+        ) : (
+          <div className="cards-grid">
+            {paidCards.map((c: any) => (
+              <article className="panel" key={c.id} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                  <Pill tone={Number(c.price_uzs) > 0 ? "amber" : "green"}>
+                    {Number(c.price_uzs) > 0 ? `${Number(c.price_uzs).toLocaleString("uz-UZ")} so‘m` : "BEPUL"}
+                  </Pill>
+                  <small className="muted">{c.slug}</small>
+                </div>
+                <h3 style={{ margin: 0 }}>{c.title}</h3>
+                <small className="muted">Muallif: {c.tenant_name} · Yechilgan: {c.market_solves || 0} · Sotuv: {c.sales_count || 0}</small>
+                <div style={{ marginTop: "auto" }}>
+                  <button type="button" className="btn secondary tiny" disabled={busy === "tprice-" + c.id} onClick={() => updateTestPrice(c)}>
+                    <Coins size={14} /> Narx belgilash
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        )
+      ) : tab === "test_orders" ? (
+        !testOrders.length ? (
+          <div className="panel"><Empty title="Hali test xaridlari yo‘q" text="Pullik IELTS / DTM testlariga buyurtmalar tushishi bilan shu yerda chiqadi." /></div>
+        ) : (
+          <div className="panel" style={{ overflowX: "auto" }}>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Test</th>
+                  <th>Xaridor</th>
+                  <th>Unikal summa</th>
+                  <th>Holat</th>
+                  <th>Amal</th>
+                </tr>
+              </thead>
+              <tbody>
+                {testOrders.map((o: any) => (
+                  <tr key={o.id}>
+                    <td><strong>{o.card_title}</strong> ({o.card_slug})</td>
+                    <td>{o.buyer_name} {o.buyer_phone ? `(${o.buyer_phone})` : ""}</td>
+                    <td><strong>{Number(o.unique_amount).toLocaleString("uz-UZ")} so‘m</strong></td>
+                    <td>
+                      <Pill tone={o.status === "paid" ? "green" : o.status === "rejected" ? "red" : "amber"}>
+                        {o.status === "paid" ? "To‘landi" : o.status === "rejected" ? "Rad etildi" : "Kutilmoqda"}
+                      </Pill>
+                    </td>
+                    <td>
+                      {o.status === "pending" ? (
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <button type="button" className="btn primary tiny" disabled={busy === "tord-" + o.id} onClick={() => decideTestOrder(o.id, "paid")}>
+                            <CheckCircle2 size={14} /> Tasdiqlash
+                          </button>
+                          <button type="button" className="btn secondary tiny" disabled={busy === "tord-" + o.id} onClick={() => decideTestOrder(o.id, "rejected")}>
+                            <XCircle size={14} /> Rad
+                          </button>
+                        </div>
+                      ) : (
+                        <small className="muted">{o.tx_note || "—"}</small>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )
       ) : !orders.length ? (

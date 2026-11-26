@@ -368,6 +368,30 @@ billingWebhook.post("/auto-webhook", async (c) => {
         book_id: bookOrd.book_id,
       });
     }
+    const testOrd: any = await first(
+      c.env.DB,
+      `SELECT * FROM test_card_orders
+       WHERE status='pending' AND unique_amount=? AND expires_at >= ?
+       ORDER BY created_at DESC LIMIT 1`,
+      d.amount,
+      ts,
+    );
+    if (testOrd) {
+      await stmt(
+        c.env.DB,
+        "UPDATE test_card_orders SET status='paid', paid_at=?, tx_note=? WHERE id=?",
+        ts,
+        d.raw_text.slice(0, 180) || d.source,
+        testOrd.id,
+      ).run();
+      return c.json({
+        ok: true,
+        matched: true,
+        type: "test_order",
+        order_id: testOrd.id,
+        card_slug: testOrd.card_slug,
+      });
+    }
     return c.json({ ok: false, matched: false, message: "Mos keluvchi faol buyurtma topilmadi" });
   }
 

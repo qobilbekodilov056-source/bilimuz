@@ -1401,7 +1401,9 @@ export function PracticeCatalog() {
           {filtered.map((c: any) => (
             <article className="panel test-card" key={c.slug}>
               <div className="test-card-top">
-                <Pill tone="green">{c.category || "Ochiq test"}</Pill>
+                <Pill tone={Number(c.price_uzs) > 0 ? "amber" : "green"}>
+                  {Number(c.price_uzs) > 0 ? `🔒 ${Number(c.price_uzs).toLocaleString("uz-UZ")} so‘m` : (c.category || "Ochiq test")}
+                </Pill>
                 <small className="muted">{c.slug}</small>
               </div>
               <h2>{c.title}</h2>
@@ -1565,7 +1567,44 @@ function ExamFeedbackBox({
 
 export function PracticeExam() {
   const { slug = "" } = useParams();
-  const pack = useData("/api/v2/public/practice/" + encodeURIComponent(slug));
+  const savedTestTok = typeof localStorage !== "undefined" ? localStorage.getItem("bilimuz_test_unlock_" + slug) || "" : "";
+  const [testOrder, setTestOrder] = useState<any>(null);
+  const [buyBusy, setBuyBusy] = useState(false);
+  const pack = useData("/api/v2/public/practice/" + encodeURIComponent(slug) + (savedTestTok ? "?token=" + encodeURIComponent(savedTestTok) : ""));
+  useEffect(() => {
+    if (!testOrder || testOrder.paid) return;
+    const t = setInterval(async () => {
+      try {
+        const st = await api("/api/v2/public/practice/order/" + encodeURIComponent(testOrder.order_id) + "/status");
+        if (st?.paid && st.unlock_token) {
+          localStorage.setItem("bilimuz_test_unlock_" + slug, st.unlock_token);
+          setTestOrder({ ...testOrder, paid: true });
+          pack.reload();
+        }
+      } catch {}
+    }, 5000);
+    return () => clearInterval(t);
+  }, [testOrder, slug]);
+  async function startTestBuy(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setBuyBusy(true);
+    setError(null);
+    try {
+      const fd = new FormData(e.currentTarget);
+      const res = await api("/api/v2/public/practice/" + encodeURIComponent(slug) + "/buy", {
+        method: "POST",
+        data: {
+          buyer_name: String(fd.get("buyer_name") || ""),
+          buyer_phone: String(fd.get("buyer_phone") || ""),
+        },
+      });
+      setTestOrder(res);
+    } catch (err) {
+      setError(err);
+    } finally {
+      setBuyBusy(false);
+    }
+  }
   const [guest, setGuest] = useState<{
     name: string;
     region: string;
@@ -1649,6 +1688,62 @@ export function PracticeExam() {
 
   const card = pack.data.card;
   const questions: any[] = pack.data.questions || [];
+
+  if (card?.locked) {
+    return (
+      <div className="exam-join">
+        <Link to="/practice" className="back-link">
+          <ArrowLeft size={17} />
+          Ochiq testlar
+        </Link>
+        <div className="panel" style={{ maxWidth: 540, margin: "16px auto", display: "flex", flexDirection: "column", gap: 14 }}>
+          <Pill tone="amber">🔒 PULLIK MAXSUS TEST</Pill>
+          <h1 style={{ margin: 0 }}>{card.title}</h1>
+          <p className="muted" style={{ margin: 0 }}>
+            {card.description || "To‘liq savollar, vaqt nazorati, batafsil tahlil va rasmiy QR sertifikat."}
+          </p>
+          <div className="test-card-details">
+            <span>{card.question_count} ta savol</span>
+            <span>{card.duration_minutes} daqiqa</span>
+            <span><strong>{Number(card.price_uzs || 0).toLocaleString("uz-UZ")} so‘m</strong></span>
+          </div>
+          {!!error && <ErrorBox error={error} />}
+          {!testOrder ? (
+            <form onSubmit={startTestBuy} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <label>
+                Ism-familiyangiz
+                <input name="buyer_name" required placeholder="Masalan: Azizbek Karimov" />
+              </label>
+              <label>
+                Telefon raqam (ixtiyoriy)
+                <input name="buyer_phone" placeholder="+998 90 123 45 67" />
+              </label>
+              <button type="submit" className="btn primary full" disabled={buyBusy}>
+                {buyBusy ? "Tayyorlanmoqda..." : `Testni sotib olish — ${Number(card.price_uzs || 0).toLocaleString("uz-UZ")} so‘m`}
+              </button>
+            </form>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <div className="panel" style={{ background: "#ecfdf5", borderColor: "#10b981" }}>
+                <small className="muted">ANIQ O‘TKAZILADIGAN SUMMA</small>
+                <div style={{ fontSize: 28, fontWeight: 800, color: "#065744" }}>
+                  {Number(testOrder.unique_amount).toLocaleString("uz-UZ")} so‘m
+                </div>
+                {testOrder.card_number && (
+                  <p style={{ margin: "6px 0 0", fontSize: 14 }}>
+                    Karta: <strong>{testOrder.card_number}</strong> ({testOrder.card_holder || testOrder.bank_name})
+                  </p>
+                )}
+              </div>
+              <p className="muted" style={{ margin: 0, fontSize: 13.5 }}>
+                Click / Payme / Uzum orqali aynan <strong>{Number(testOrder.unique_amount).toLocaleString("uz-UZ")} so‘m</strong> o‘tkazing — tizim 5–15 soniyada avtomatik tasdiqlab testni ochib beradi!
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   if (result && guest) {
     return (

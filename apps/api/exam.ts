@@ -53,6 +53,7 @@ function publicCard(r: Row) {
     description: s.description,
     reward: s.reward || "",
     reward_coins: Number(s.reward_coins || 0),
+    price_uzs: Number(r.price_uzs || 0),
     category: s.category,
     question_count: s.question_count,
     duration_minutes: s.duration_minutes,
@@ -790,11 +791,112 @@ exam.get("/practice", async (c) => {
   return c.json({ items });
 });
 
+
+exam.post("/practice/:slug/buy", async (c) => {
+  await rate(c, "practice-buy", 30, 60);
+  const card = await getPublicCard(c);
+  const s = JSON.parse(card.settings_json);
+  if (card.status !== "active" || s.access_mode !== "open" || card.group_id)
+    fail("Bu test ochiq sotuvda mavjud emas", 403);
+  const price = Number(card.price_uzs || 0);
+  if (price <= 0) fail("Bu test bepul, sotib olish shart emas", 400);
+
+  const d = await body(
+    c,
+    z.object({
+      buyer_name: z.string().trim().min(2).max(120),
+      buyer_phone: z.string().trim().max(40).optional().default(""),
+    }).strict(),
+  );
+
+  const ts = now();
+  let uniqueAmount = price + 101 + Math.floor(Math.random() * 880);
+  for (let i = 0; i < 8; i++) {
+    const c1 = await first(c.env.DB, "SELECT id FROM billing_orders WHERE status='pending' AND unique_amount=? AND expires_at>=?", uniqueAmount, ts);
+    const c2 = await first(c.env.DB, "SELECT id FROM library_book_orders WHERE status='pending' AND unique_amount=? AND expires_at>=?", uniqueAmount, ts);
+    const c3 = await first(c.env.DB, "SELECT id FROM test_card_orders WHERE status='pending' AND unique_amount=? AND expires_at>=?", uniqueAmount, ts);
+    if (!c1 && !c2 && !c3) break;
+    uniqueAmount = price + 101 + Math.floor(Math.random() * 880);
+  }
+
+  const oid = id();
+  const unlockToken = id() + id();
+  const expiresAt = ts + 30 * 60;
+  await stmt(
+    c.env.DB,
+    `INSERT INTO test_card_orders(id, card_id, card_slug, buyer_name, buyer_phone, amount, unique_amount, status, unlock_token, tx_note, created_at, expires_at)
+     VALUES(?,?,?,?,?,?,?,'pending',?,'',?,?)`,
+    oid,
+    card.id,
+    card.slug,
+    d.buyer_name,
+    d.buyer_phone,
+    price,
+    uniqueAmount,
+    unlockToken,
+    ts,
+    expiresAt,
+  ).run();
+
+  const cfgRow: any = await first(c.env.DB, "SELECT value_json FROM system_settings WHERE key='billing_card'");
+  let bankCard = { card_number: "", card_holder: "", bank_name: "" };
+  try {
+    if (cfgRow?.value_json) bankCard = { ...bankCard, ...JSON.parse(cfgRow.value_json) };
+  } catch {}
+
+  return c.json({
+    order_id: oid,
+    card_slug: card.slug,
+    card_title: card.title,
+    amount: price,
+    unique_amount: uniqueAmount,
+    unlock_token: unlockToken,
+    expires_at: expiresAt,
+    card_number: bankCard.card_number,
+    card_holder: bankCard.card_holder,
+    bank_name: bankCard.bank_name,
+  }, 201);
+});
+
+exam.get("/practice/order/:orderId/status", async (c) => {
+  const o: any = await first(
+    c.env.DB,
+    "SELECT id, card_slug, status, unlock_token FROM test_card_orders WHERE id=?",
+    c.req.param("orderId"),
+  );
+  if (!o) fail("Buyurtma topilmadi", 404);
+  return c.json({
+    order_id: o.id,
+    card_slug: o.card_slug,
+    status: o.status,
+    paid: o.status === "paid",
+    unlock_token: o.status === "paid" ? o.unlock_token : "",
+  });
+});
+
 exam.get("/practice/:slug", async (c) => {
   const card = await getPublicCard(c);
   const s = JSON.parse(card.settings_json);
   if (card.status !== "active" || s.access_mode !== "open" || card.group_id)
     fail("Bu test ochiq mashq rejimida mavjud emas", 403);
+  const priceUzs = Number(card.price_uzs || 0);
+  if (priceUzs > 0) {
+    const tok = String(c.req.query("token") || "").trim();
+    const paidOrd = tok
+      ? await first(
+          c.env.DB,
+          "SELECT id FROM test_card_orders WHERE card_id=? AND unlock_token=? AND status='paid' LIMIT 1",
+          card.id,
+          tok,
+        )
+      : null;
+    if (!paidOrd) {
+      return c.json({
+        card: { ...publicCard(card), locked: true, unlocked: false },
+        questions: [],
+      });
+    }
+  }
   const release = await first(
     c.env.DB,
     "SELECT version, settings_json FROM card_releases WHERE tenant_id=? AND card_id=? ORDER BY version DESC LIMIT 1",
