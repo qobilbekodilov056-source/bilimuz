@@ -145,7 +145,7 @@ export const registrationSchema = z
       .email()
       .max(254)
       .transform((s) => s.toLowerCase()),
-    password: z.string().min(12).max(128),
+    password: z.string().min(8).max(16),
     display_name: z.string().trim().min(3).max(120),
     workplace: z.string().max(160).default(""),
     consent: z.literal(true),

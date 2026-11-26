@@ -274,7 +274,7 @@ export function AuthPage({
               label="Parol"
               hint={
                 mode === "register"
-                  ? "Kamida 12 ta belgi ishlating."
+                  ? "8–16 ta belgi (kamida 8 ta belgi ishlating."
                   : undefined
               }
             >
@@ -282,8 +282,8 @@ export function AuthPage({
                 name="password"
                 type="password"
                 required
-                minLength={mode === "register" ? 12 : 1}
-                maxLength={128}
+                minLength={mode === "register" ? 8 : 1}
+                maxLength={mode === "register" ? 16 : 128}
                 autoComplete={
                   mode === "register" ? "new-password" : "current-password"
                 }
@@ -467,8 +467,8 @@ export function TokenPage({ mode }: { mode: "verify" | "reset" }) {
               <input
                 name="password"
                 type="password"
-                minLength={12}
-                maxLength={128}
+                minLength={8}
+                maxLength={16}
                 required
                 autoComplete="new-password"
               />
