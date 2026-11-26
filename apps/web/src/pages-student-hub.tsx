@@ -234,6 +234,14 @@ export function StudentCabinetPage() {
   }, [code, navigate]);
   const [tab, setTab] = useState<NavTab>("dashboard");
   const [activeGame, setActiveGame] = useState<any>(null);
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.location.hash === "#daily-quests") {
+      setTab("dashboard");
+      setTimeout(() => {
+        document.getElementById("daily-quests")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 250);
+    }
+  }, [code]);
   const [shopCat, setShopCat] = useState<ShopSlot>("banner");
   const [shopBusy, setShopBusy] = useState<string>("");
   const [showCodeModal, setShowCodeModal] = useState(false);
@@ -1083,7 +1091,7 @@ export function StudentCabinetPage() {
 
                 {/* 2. MIDDLE DARK GLASS CARD: Daily Personalized Quests */}
                 {shop?.daily_quests?.length > 0 && (
-                  <div className="mg-widget">
+                  <div id="daily-quests" className="mg-widget">
                     <div className="mg-widget-head">
                       <strong style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Target size={15} /> Kunlik questlar</strong>
                       <small className="mg-muted">{shop.subject_label || "Umumiy"}</small>
@@ -1112,7 +1120,7 @@ export function StudentCabinetPage() {
                                 {q.link_label} ↗
                               </button>
                             ) : (
-                              <Link to={q.link} className="mg-quest-go" onClick={() => { if (activeCode && q.id === "q_book") { api(`/api/v2/public/assignments/shop/${encodeURIComponent(activeCode)}/quest-visit`, { method: "POST", data: { quest_id: "q_book" } }).catch(() => {}); } }}>{q.link_label} ↗</Link>
+                              <Link to={q.link + (q.link.includes("?") ? "&" : "?") + "from=quest&code=" + encodeURIComponent(activeCode)} className="mg-quest-go" onClick={() => { if (activeCode && q.id === "q_book") { api(`/api/v2/public/assignments/shop/${encodeURIComponent(activeCode)}/quest-visit`, { method: "POST", data: { quest_id: "q_book" } }).catch(() => {}); } }}>{q.link_label} ↗</Link>
                             )}
                             {q.claimed ? (
                               <span className="mg-quest-ok" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><CheckCircle2 size={13} color="#059669" /> +{q.reward} <Coins size={12} color="#d97706" /></span>

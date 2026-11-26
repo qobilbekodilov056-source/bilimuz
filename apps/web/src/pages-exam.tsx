@@ -1680,6 +1680,16 @@ export function PracticeExam() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [result, setResult] = useState<any>(null);
+  const questReturnUrl = (() => {
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      if (sp.get("from") !== "quest") return "";
+      const c = sp.get("code") || localStorage.getItem("bilimuz_student_code") || "";
+      return c ? "/student/" + encodeURIComponent(c) + "#daily-quests" : "";
+    } catch {
+      return "";
+    }
+  })();
 
   useEffect(() => {
     if (!guest || result || !pack.data) return;
@@ -1732,7 +1742,7 @@ export function PracticeExam() {
   if (pack.error)
     return (
       <div className="exam-join">
-        <Link to="/practice" className="back-link">
+        <Link to={questReturnUrl || "/practice"} className="back-link">
           <ArrowLeft size={17} />
           Ochiq testlar
         </Link>
@@ -1746,7 +1756,7 @@ export function PracticeExam() {
   if (card?.auth_required) {
     return (
       <div className="exam-join">
-        <Link to="/practice" className="back-link">
+        <Link to={questReturnUrl || "/practice"} className="back-link">
           <ArrowLeft size={17} />
           Ochiq testlar
         </Link>
@@ -1770,7 +1780,7 @@ export function PracticeExam() {
   if (card?.locked) {
     return (
       <div className="exam-join">
-        <Link to="/practice" className="back-link">
+        <Link to={questReturnUrl || "/practice"} className="back-link">
           <ArrowLeft size={17} />
           Ochiq testlar
         </Link>
@@ -1922,9 +1932,15 @@ export function PracticeExam() {
             >
               Qayta yechish
             </button>
-            <Link to="/practice" className="btn secondary">
-              Boshqa testlar
-            </Link>
+            {questReturnUrl ? (
+              <Link to={questReturnUrl} className="btn primary" style={{ background: "linear-gradient(135deg, #059669, #0c8066)" }}>
+                <ArrowLeft size={16} /> Questga qaytish (Coin olish)
+              </Link>
+            ) : (
+              <Link to="/practice" className="btn secondary">
+                Boshqa testlar
+              </Link>
+            )}
           </div>
         </div>
         <div className="result-stats">
@@ -2001,7 +2017,7 @@ export function PracticeExam() {
   if (!guest) {
     return (
       <div className="exam-join">
-        <Link to="/practice" className="back-link">
+        <Link to={questReturnUrl || "/practice"} className="back-link">
           <ArrowLeft size={17} />
           Ochiq testlar
         </Link>

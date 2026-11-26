@@ -472,12 +472,23 @@ export function LibraryBookReader() {
     );
   }
 
+  const questReturnUrl = (() => {
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      if (sp.get("from") !== "quest") return "";
+      const c = sp.get("code") || localStorage.getItem("bilimuz_student_code") || "";
+      return c ? "/student/" + encodeURIComponent(c) + "#daily-quests" : "";
+    } catch {
+      return "";
+    }
+  })();
+
   return (
     <div className="lib-reader-wrap">
       <div className="lib-reader-top">
-        <Link to="/library" className="back-link" style={{ margin: 0 }}>
+        <Link to={questReturnUrl || "/library"} className="back-link" style={{ margin: 0 }}>
           <ArrowLeft size={17} />
-          Kutubxona
+          {questReturnUrl ? "Questga qaytish (Coin olish)" : "Kutubxona"}
         </Link>
         <div className="lib-reader-tools">
           <button
