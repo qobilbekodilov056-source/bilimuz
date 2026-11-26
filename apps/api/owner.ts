@@ -387,9 +387,15 @@ owner.post("/store-items/import", async (c) => {
         duplicate: duplicateRows.length,
         invalid: invalidRows.length,
       },
-      sample_errors: invalidRows.slice(0, 15).map((r) => ({
+      rows: preview.slice(0, 250).map((r) => ({
         row: r.row,
-        errors: r.errors,
+        status: r.status,
+        title: r.question?.title || "",
+        category: r.question?.category || "",
+        level: r.question?.level || "",
+        correct: (r.question?.correct || []).join(", "),
+        options_count: r.question?.options?.length || 0,
+        errors: r.errors || [],
       })),
     });
   }

@@ -1864,7 +1864,7 @@ function OwnerStoreBank() {
       fd.append("mode", mode);
       const res = await api<any>(base + "/store-items/import", {
         method: "POST",
-        data: fd,
+        form: fd,
       });
       if (mode === "preview") {
         setImportPreview(res);
@@ -2009,11 +2009,13 @@ function OwnerStoreBank() {
           close={() => {
             setImportOpen(false);
             setImportPreview(null);
+            setErr(null);
           }}
         >
           <div className="form">
+            {!!err && <ErrorBox error={err} />}
             <p className="muted" style={{ marginTop: 0 }}>
-              Bilim UZ Excel (.xlsx) yoki CSV shablonidagi savollarni yuklang — barcha yaroqli savollar to‘g‘ridan-to‘g‘ri tasdiqlangan holda umumiy bazaga tushadi.
+              Bilim UZ Excel (.xlsx) yoki CSV shablonidagi savollarni yuklang. Avval <strong>Tekshirish</strong> orqali har bir savolni ko‘ring, so‘ng <strong>Umumiy bazaga yuklash</strong> tugmasini bosing.
             </p>
             <Field label="Excel (.xlsx) yoki CSV fayl">
               <input
@@ -2022,12 +2024,13 @@ function OwnerStoreBank() {
                 onChange={(e) => {
                   setImportFile(e.target.files?.[0] || null);
                   setImportPreview(null);
+                  setErr(null);
                 }}
               />
             </Field>
             {importPreview?.summary && (
               <div className="panel" style={{ background: "#f8fafc", padding: 12 }}>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
                   <Pill tone="neutral">Jami: {importPreview.summary.total}</Pill>
                   <Pill tone="green">Yaroqli: {importPreview.summary.valid}</Pill>
                   <Pill tone="amber">Takroriy: {importPreview.summary.duplicate}</Pill>
@@ -2035,10 +2038,46 @@ function OwnerStoreBank() {
                     <Pill tone="red">Xato: {importPreview.summary.invalid}</Pill>
                   )}
                 </div>
-                {importPreview.sample_errors?.length > 0 && (
-                  <small className="muted" style={{ display: "block", color: "#b91c1c" }}>
-                    Xatolar: {importPreview.sample_errors.slice(0, 3).map((er: any) => `${er.row}-qator: ${er.errors?.[0]?.message || "xato"}`).join(" · ")}
-                  </small>
+                {Array.isArray(importPreview.rows) && importPreview.rows.length > 0 && (
+                  <div style={{ maxHeight: 280, overflowY: "auto", border: "1px solid #e2e8f0", borderRadius: 10, background: "#fff" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+                      <thead>
+                        <tr style={{ background: "#f1f5f9", textAlign: "left" }}>
+                          <th style={{ padding: "7px 8px" }}>#</th>
+                          <th style={{ padding: "7px 8px" }}>Savol matni</th>
+                          <th style={{ padding: "7px 8px" }}>Fan / Daraja</th>
+                          <th style={{ padding: "7px 8px" }}>Javob</th>
+                          <th style={{ padding: "7px 8px" }}>Holat</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {importPreview.rows.map((r: any) => (
+                          <tr key={r.row} style={{ borderTop: "1px solid #f1f5f9" }}>
+                            <td style={{ padding: "6px 8px", color: "#64748b" }}>{r.row}</td>
+                            <td style={{ padding: "6px 8px", maxWidth: 260 }}>
+                              <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.title}>
+                                {r.title || "—"}
+                              </div>
+                              {r.errors?.length > 0 && (
+                                <small style={{ color: "#b91c1c", display: "block" }}>
+                                  {r.errors.map((e: any) => `${e.column}: ${e.message}`).join("; ")}
+                                </small>
+                              )}
+                            </td>
+                            <td style={{ padding: "6px 8px" }}>
+                              {r.category || "—"} · {r.level || "—"}
+                            </td>
+                            <td style={{ padding: "6px 8px", fontWeight: 700 }}>{r.correct || "—"}</td>
+                            <td style={{ padding: "6px 8px" }}>
+                              <Pill tone={r.status === "valid" ? "green" : r.status === "duplicate" ? "amber" : "red"}>
+                                {r.status === "valid" ? "Yaroqli" : r.status === "duplicate" ? "Takroriy" : "Xato"}
+                              </Pill>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
               </div>
             )}
@@ -2054,10 +2093,10 @@ function OwnerStoreBank() {
               <button
                 type="button"
                 className="btn primary"
-                disabled={busy || !importFile || (importPreview && !importPreview.summary?.valid)}
+                disabled={busy || !importFile || !importPreview || !importPreview.summary?.valid}
                 onClick={() => void runImport("commit")}
               >
-                {busy ? "Yuklanmoqda…" : "2. Umumiy bazaga yuklash"}
+                {busy ? "Yuklanmoqda…" : `2. Umumiy bazaga yuklash (${importPreview?.summary?.valid || 0})`}
               </button>
             </div>
           </div>
