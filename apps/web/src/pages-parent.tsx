@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, ArrowRight, Award, CalendarDays, Search } from "lucide-react";
+import { ArrowLeft, ArrowRight, Award, CalendarDays, Search, Bot, Trophy } from "lucide-react";
 import { Busy, Empty, ErrorBox, Field, Pill, useData, SmartBackLink } from "./ui";
 import { openCertificatePrint } from "./cert-pdf";
 import { useConfig } from "./main";
@@ -58,7 +58,7 @@ export function ParentPortal() {
               rel="noreferrer"
               className="btn primary tiny"
             >
-              🤖 Telegram xabarnoma ulash
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Bot size={15} color="#0284c7" /> Telegram xabarnoma ulash</span>
             </a>
           )}
           <Link to={"/vazifalar/" + encodeURIComponent(activeCode)} className="btn secondary tiny">
@@ -160,7 +160,7 @@ export function ParentPortal() {
             </div>
             <div className="panel">
               <small className="muted">Qo‘lga kiritilgan yutuqlar</small>
-              <strong>🏆 {d.summary.rewards_count} ta</strong>
+              <strong style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><Trophy size={15} color="#d97706" /> {d.summary.rewards_count} ta</strong>
             </div>
           </div>
 
@@ -172,7 +172,7 @@ export function ParentPortal() {
               <div className="parent-rewards-grid">
                 {d.rewards.map((rw: any, i: number) => (
                   <div className="reward-banner" key={i} style={{ margin: 0 }}>
-                    <strong>🏆 {rw.reward}</strong>
+                    <strong style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><Trophy size={15} color="#d97706" /> {rw.reward}</strong>
                     <small style={{ display: "block", marginTop: 4 }}>
                       {rw.test_title} · {rw.percentage}% ·{" "}
                       {new Date(rw.submitted_at * 1000).toLocaleDateString("uz-UZ")}
@@ -229,7 +229,7 @@ export function ParentPortal() {
                         <td>
                           {t.reward ? (
                             t.passed ? (
-                              <span className="parent-reward-won">🏆 {t.reward}</span>
+                              <span className="parent-reward-won" style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><Trophy size={13} color="#d97706" /> {t.reward}</span>
                             ) : (
                               <small className="muted">Maqsad: {t.reward}</small>
                             )
@@ -268,7 +268,7 @@ export function ParentPortal() {
                               })
                             }
                           >
-                            🏅 PDF
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><Award size={14} color="#0c8066" /> PDF</span>
                           </button>
                         </td>
                       </tr>

@@ -21,8 +21,7 @@ import {
   ShoppingBag,
   Trash2,
   Upload,
-  Users,
-} from "lucide-react";
+  Users, Bot, KeyRound } from "lucide-react";
 import { api } from "./api";
 import { OwnerGamesPage } from "./pages-games";
 import { OwnerLibraryManager } from "./pages-owner-library";
@@ -1169,7 +1168,7 @@ function OwnerSettingsForm({ initial }: { initial: any }) {
                 }
               }}
             >
-              🤖 Webhookni ulash
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Bot size={15} color="#0284c7" /> Webhookni ulash</span>
             </button>
           </div>
         </Field>
@@ -1194,14 +1193,14 @@ function OwnerSettingsForm({ initial }: { initial: any }) {
           </small>
           <div className="feature-flags-grid">
             {[
-              ["games_enabled", "🎮 O‘yinlar markazi (/games)"],
+              ["games_enabled", "O‘yinlar markazi (/games)"],
               ["chat_enabled", "💬 Jonli Chat (Guruhlar + Umumiy chat)"],
-              ["library_enabled", "📚 Raqamli kutubxona (/library)"],
-              ["assignments_enabled", "📝 Vazifalar (/vazifalar va Studio)"],
+              ["library_enabled", "Raqamli kutubxona (/library)"],
+              ["assignments_enabled", "Vazifalar (/vazifalar va Studio)"],
               ["journal_enabled", "📊 Kurs jurnali (Studio)"],
-              ["store_enabled", "🛒 Savollar do‘koni va Market"],
-              ["practice_enabled", "⚡ Ochiq mashq testlari"],
-              ["parent_enabled", "👨‍👩‍👧 Ota-ona kabineti (/parent)"],
+              ["store_enabled", "Umumiy savollar bazasi va Market"],
+              ["practice_enabled", "Ochiq mashq testlari"],
+              ["parent_enabled", "Ota-ona kabineti (/parent)"],
               ["apk_enabled", "📱 Android APK yuklab olish kartasi"],
             ].map(([key, label]) => (
               <label className="flag-toggle" key={key}>
@@ -1503,7 +1502,7 @@ function OwnerBillingPage() {
 
       {/* Product Key Generator */}
       <div style={{ padding: 14, borderRadius: 12, background: "#f8fafc", border: "1px solid var(--line)", marginBottom: 18 }}>
-        <strong style={{ display: "block", marginBottom: 8 }}>🔑 Product Key yaratish (Tarif kaliti)</strong>
+        <strong style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 8 }}><KeyRound size={15} color="#d97706" /> Product Key yaratish (Tarif kaliti)</strong>
         <form onSubmit={createKey} style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 12 }}>
           <Field label="Tarif">
             <select value={keyPlan} onChange={(e) => setKeyPlan(e.target.value as any)}>

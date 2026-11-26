@@ -390,7 +390,7 @@ export function LibraryBookReader() {
         if (st?.paid && st.unlock_token) {
           localStorage.setItem("bilimuz_book_unlock_" + id, st.unlock_token);
           setBuyOrder({ ...buyOrder, paid: true });
-          toast("To‘lov tasdiqlandi! Kitobning barcha boblari ochildi 🎉");
+          toast("To‘lov tasdiqlandi! Kitobning barcha boblari ochildi!");
           setBuyModal(false);
           data.reload();
         }
@@ -413,7 +413,7 @@ export function LibraryBookReader() {
       });
       if (res?.paid && res?.unlock_token) {
         localStorage.setItem("bilimuz_book_unlock_" + id, res.unlock_token);
-        toast("🎉 Promokod qabul qilindi! Kitob bepul ochildi!");
+        toast("Promokod qabul qilindi! Kitob bepul ochildi!");
         setBuyModal(false);
         data.reload();
         return;

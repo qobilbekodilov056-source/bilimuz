@@ -27,8 +27,7 @@ import {
   Trash2,
   UploadCloud,
   Users,
-  Zap,
-} from "lucide-react";
+  Zap, Award, FileText, Printer, RefreshCw, Shield, Trophy } from "lucide-react";
 import {
   kindNames,
   levelNames,
@@ -794,7 +793,7 @@ export function Questions() {
               className="btn secondary"
               onClick={() => setShowOfflinePdf(true)}
             >
-              📄 Oflayn PDF test
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><FileText size={15} color="#2563eb" /> Oflayn PDF test</span>
             </button>
             <Link to="/studio/store" className="btn secondary">
               <Database size={16} color="#059669" />
@@ -1268,7 +1267,7 @@ export function GroupsStudents({ students = false }: { students?: boolean }) {
                           setEdit({ ...edit, student_code: code, _codeGenerated: true });
                         }}
                       >
-                        {edit._codeGenerated || edit.student_code ? "✓ Kod berildi" : "🎲 Tasodifiy kod"}
+                        {edit._codeGenerated || edit.student_code ? "✓ Kod berildi" : "Tasodifiy kod"}
                       </button>
                     ) : (
                       <button
@@ -1283,7 +1282,7 @@ export function GroupsStudents({ students = false }: { students?: boolean }) {
                           toast("Yangi tiklash kodi yaratildi. Saqlash tugmasini bosing!");
                         }}
                       >
-                        {edit._codeRecovered ? "✓ Tiklandi" : "🔄 Kodni tiklash"}
+                        {edit._codeRecovered ? "✓ Tiklandi" : "Kodni tiklash"}
                       </button>
                     )}
                   </div>
@@ -2376,14 +2375,14 @@ export function Cards() {
                 </div>
                 <h2>{r.title}</h2>
                 <p>{r.description || r.category || "Shaxsiy test kartasi"}</p>
-                {r.reward && <div className="card-reward">🏆 Yutuq: {r.reward}</div>}
+                {r.reward && <div className="card-reward" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Trophy size={14} color="#d97706" /> Yutuq: {r.reward}</div>}
                 {(r.market_status && r.market_status !== "none") || r.market_solves > 0 ? (
                   <div className="market-mini-bar">
                     {r.market_status === "approved" && <Pill tone="green">Marketda</Pill>}
                     {r.market_status === "pending" && <Pill tone="amber">Market: kutilmoqda</Pill>}
                     {r.market_status === "rejected" && <Pill tone="red">Market: rad etilgan</Pill>}
                     {r.market_solves > 0 && (
-                      <small className="muted">👥 {r.market_solves} marta yechilgan</small>
+                      <small className="muted" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><Users size={13} color="#64748b" /> {r.market_solves} marta yechilgan</small>
                     )}
                   </div>
                 ) : null}
@@ -2628,13 +2627,13 @@ function AttemptDetailModal({
                 })
               }
             >
-              🏅 QR-kodli Sertifikat (PDF)
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Award size={15} color="#0c8066" /> QR-kodli Sertifikat (PDF)</span>
             </button>
           </div>
 
           <div className={"ac-result-panel" + ((a.violations_count || 0) > 0 ? " has-issues" : "")} style={{ padding: "12px 14px", borderRadius: 10, border: "1px solid var(--line)" }}>
             <div className="ac-result-head">
-              <strong>🛡 Imtihon nazorati hisoboti</strong>
+              <strong style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Shield size={15} color="#2563eb" /> Imtihon nazorati hisoboti</strong>
               {a.auto_submitted ? (
                 <Pill tone="red">Avto-yakunlandi</Pill>
               ) : (a.violations_count || 0) > 0 ? (
@@ -3238,13 +3237,13 @@ export function StorePage({ publicView = false }: { publicView?: boolean }) {
                   </div>
                   <h2>{c.title}</h2>
                   <p>{c.description || "Ochiq market test kartochkasi"}</p>
-                  {c.reward && <div className="card-reward">🏆 Yutuq: {c.reward}</div>}
+                  {c.reward && <div className="card-reward" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Trophy size={14} color="#d97706" /> Yutuq: {c.reward}</div>}
                   <div className="market-card-stats">
-                    <span>👥 {c.market_solves} yechgan</span>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><Users size={13} color="#64748b" /> {c.market_solves} yechgan</span>
                     <span>
                       ★ {c.avg_rating !== null ? c.avg_rating : "—"} ({c.comments_count})
                     </span>
-                    {c.avg_score !== null && <span>📊 O‘rtacha: {c.avg_score}%</span>}
+                    {c.avg_score !== null && <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><BarChart3 size={13} color="#0c8066" /> O‘rtacha: {c.avg_score}%</span>}
                   </div>
                   <div className="test-card-details">
                     <span>{c.question_count} savol</span>
@@ -4165,7 +4164,7 @@ export function JournalPage() {
             ) : (
               <>
               <div className="att-lock-notice">
-                <strong>🔒 Davomat qoidasi:</strong> Davomat faqat bugungi dars kuni (<strong>{activeToday}</strong>) belgilanadi. O‘tgan kunlar avtomatik qulflanadi va tahrirlanmaydi.
+                <strong style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><Lock size={14} color="#d97706" /> Davomat qoidasi:</strong> Davomat faqat bugungi dars kuni (<strong>{activeToday}</strong>) belgilanadi. O‘tgan kunlar avtomatik qulflanadi va tahrirlanmaydi.
               </div>
               <div className="table-wrap">
                 <table className="journal-table att-table">
@@ -4204,7 +4203,7 @@ export function JournalPage() {
                                     : "Kelajakdagi sana — dars kuni ochiladi"
                                 }
                               >
-                                {isPast ? "🔒" : "·"}
+                                {isPast ? <Lock size={12} color="#94a3b8" /> : "·"}
                               </span>
                             )}
                           </th>
@@ -4439,7 +4438,7 @@ function OfflinePdfModal({ close }: { close: () => void }) {
         </style></head><body>
         <div class="toolbar">
           <span><b>Bilim UZ — Oflayn A4 Test Varaqasi</b> (${variants} ta variant, ${take} ta savol)</span>
-          <button onclick="window.print()">🖨️ Chop etish / PDF saqlash</button>
+          <button onclick="window.print()">Chop etish / PDF saqlash</button>
         </div>
         ${variantSheets.map((x) => x.html).join("")}
         ${keyPageHtml}
@@ -4459,7 +4458,7 @@ function OfflinePdfModal({ close }: { close: () => void }) {
   }
 
   return (
-    <Modal title="📄 Oflayn imtihon uchun PDF test varaqasi" close={close}>
+    <Modal title="Oflayn imtihon uchun PDF test varaqasi" close={close}>
       {!!error && <ErrorBox error={error} />}
       <form onSubmit={generatePrintSheet}>
         <Field label="Imtihon sarlavhasi">
@@ -4493,7 +4492,7 @@ function OfflinePdfModal({ close }: { close: () => void }) {
           <span>Oxirgi sahifada O‘qituvchi javoblar kalitini chiqarish</span>
         </label>
         <button className="btn primary full" disabled={busy}>
-          {busy ? "Tayyorlanmoqda…" : "🖨️ A4 Test varaqasini ochish (PDF)"}
+          {busy ? "Tayyorlanmoqda…" : "A4 Test varaqasini ochish (PDF)"}
         </button>
       </form>
     </Modal>

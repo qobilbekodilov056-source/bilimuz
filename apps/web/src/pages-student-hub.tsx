@@ -321,7 +321,7 @@ export function StudentCabinetPage() {
         method: "POST",
         data: { item_id: itemId },
       });
-      toast("Buyum sotib olindi va profilga taqildi! 🎉");
+      toast("Buyum sotib olindi va profilga taqildi!");
       shopData.reload();
       lbData.reload();
     } catch (e: any) {
@@ -339,7 +339,7 @@ export function StudentCabinetPage() {
         method: "POST",
         data: { slot, item_id: itemId },
       });
-      toast("Profil ko‘rinishi yangilandi ✨");
+      toast("Profil ko‘rinishi yangilandi!");
       shopData.reload();
       lbData.reload();
     } catch (e: any) {
@@ -357,7 +357,7 @@ export function StudentCabinetPage() {
         method: "POST",
         data: {},
       });
-      toast(`🔥 +${res.reward} Bilim Coin olindi! (${res.streak_days}-kun ketma-ket)`);
+      toast(`+${res.reward} Bilim Coin olindi! (${res.streak_days}-kun ketma-ket)`);
       shopData.reload();
     } catch (e: any) {
       toast(e?.message || "Sovg‘ani olishda xatolik");
@@ -374,7 +374,7 @@ export function StudentCabinetPage() {
         method: "POST",
         data: { quest_id: questId },
       });
-      toast(`🎯 Quest bajarildi! +${res.reward} Bilim Coin qo‘shildi!`);
+      toast(`Quest bajarildi! +${res.reward} Bilim Coin qo‘shildi!`);
       shopData.reload();
     } catch (e: any) {
       toast(e?.message || "Quest mukofotini olishda xatolik");
@@ -668,7 +668,7 @@ export function StudentCabinetPage() {
                             <div key={a.id} className="mg-hw-mini-row">
                               <div>
                                 <strong>{a.title}</strong>
-                                <small>🕒 {fmtDateTime(a.due_at)} · Maks: {a.max_score} ball</small>
+                                <small style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><Clock size={13} color="#64748b" /> {fmtDateTime(a.due_at)} · Maks: {a.max_score} ball</small>
                               </div>
                               <button
                                 type="button"
@@ -803,7 +803,7 @@ export function StudentCabinetPage() {
                                         })
                                       }
                                     >
-                                      🏅 PDF
+                                      <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><Award size={14} color="#0c8066" /> PDF</span>
                                     </button>
                                   </td>
                                 </tr>
@@ -925,9 +925,9 @@ export function StudentCabinetPage() {
 
                     <div className="shop-cat-tabs">
                       {([
-                        ["banner", "🖼 Bannerlar"],
+                        ["banner", "Bannerlar"],
                         ["frame", "✨ Ramkalar"],
-                        ["avatar", "🎭 Avatarlar"],
+                        ["avatar", "Avatarlar"],
                         ["title", "🏷 Unvonlar"],
                       ] as [ShopSlot, string][]).map(([slot, label]) => (
                         <button
@@ -1036,7 +1036,7 @@ export function StudentCabinetPage() {
                       })}
                     </div>
                     <div className="mg-widget-foot">
-                      <small>7-kun: 🪙 30</small>
+                      <small style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>7-kun: <Coins size={12} color="#d97706" /> 30</small>
                       <button
                         type="button"
                         className="mg-luminous-btn"
@@ -1047,7 +1047,7 @@ export function StudentCabinetPage() {
                           ? "✓ Bugun olindi"
                           : shopBusy === "checkin"
                             ? "…"
-                            : `✓ Olish (+${shop.next_reward} 🪙)`}
+                            : `Olish (+${shop.next_reward} Coin)`}
                       </button>
                     </div>
                   </div>
@@ -1070,7 +1070,7 @@ export function StudentCabinetPage() {
                           <div className="mg-quest-bot">
                             <Link to={q.link} className="mg-quest-go" onClick={() => { if (activeCode && (q.id === "q_book" || q.id === "q_game")) { api(`/api/v2/public/assignments/shop/${encodeURIComponent(activeCode)}/quest-visit`, { method: "POST", data: { quest_id: q.id } }).catch(() => {}); } }}>{q.link_label} ↗</Link>
                             {q.claimed ? (
-                              <span className="mg-quest-ok">✓ +{q.reward} 🪙</span>
+                              <span className="mg-quest-ok" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><CheckCircle2 size={13} color="#059669" /> +{q.reward} <Coins size={12} color="#d97706" /></span>
                             ) : (
                               <button
                                 type="button"
@@ -1078,7 +1078,7 @@ export function StudentCabinetPage() {
                                 disabled={shopBusy === q.id}
                                 onClick={() => handleClaimQuest(q.id)}
                               >
-                                +{q.reward} 🪙
+                                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>+{q.reward} <Coins size={12} color="#d97706" /></span>
                               </button>
                             )}
                           </div>
