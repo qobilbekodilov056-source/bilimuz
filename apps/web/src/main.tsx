@@ -209,6 +209,8 @@ function StudioShell() {
   }
   if (account.data?.user.scope !== "teacher")
     return <Navigate to="/owner" replace />;
+  if (account.data?.user?.account_type === "learner")
+    return <Navigate to="/learner" replace />;
   const current = nav.find(
     (x) => location.pathname === "/studio" + (x[0] ? "/" + x[0] : ""),
   );
