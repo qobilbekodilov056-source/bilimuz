@@ -16,6 +16,7 @@ import {
   Lock,
   Package,
   FolderOpen,
+  Gift,
   Mail,
   Pencil,
   Plus,
@@ -136,6 +137,8 @@ function Metric({
 export function Dashboard() {
   const { data, error, loading, reload } = useData(base + "/overview"),
     billing = useData(base + "/billing/status"),
+    referral = useData(base + "/referral"),
+    toast = useToast(),
     account = useAccount();
   if (loading) return <Busy />;
   if (error) return <ErrorBox error={error} retry={reload} />;
@@ -183,6 +186,53 @@ export function Dashboard() {
           </div>
         );
       })()}
+      {referral.data?.ref_link && (
+        <div
+          className="panel"
+          style={{
+            marginBottom: 16,
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 12,
+            flexWrap: "wrap",
+            background: "linear-gradient(135deg, #f0fdf4 0%, #f8fafc 100%)",
+            borderColor: "#bbf7d0",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <Gift size={18} color="#059669" />
+            <div>
+              <strong style={{ display: "block", fontSize: 14, color: "#065f46" }}>
+                Hamkasbingizni taklif qiling — +15 kun Ustoz Pro bepul!
+              </strong>
+              <small className="muted">
+                Taklif havolangiz orqali ro‘yxatdan o‘tib emailini tasdiqlagan har bir o‘qituvchi uchun +15 kun Pro beriladi
+                {referral.data.rewarded_count > 0 ? ` · Tasdiqlangan: ${referral.data.rewarded_count} ta (+${referral.data.total_days_earned} kun)` : ""}.
+              </small>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              className="btn secondary tiny"
+              onClick={() => {
+                navigator.clipboard?.writeText(referral.data.ref_link).then(() => toast("Taklif havolasi nusxalandi!"));
+              }}
+            >
+              <Copy size={14} /> Havolani nusxalash
+            </button>
+            <a
+              className="btn primary tiny"
+              href={`https://t.me/share/url?url=${encodeURIComponent(referral.data.ref_link)}&text=${encodeURIComponent("Bilim UZ — o‘qituvchilar uchun test, jurnal va raqamli kutubxona platformasi! Bepul ro‘yxatdan o‘ting:")}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <Send size={14} /> Telegram’da ulashish
+            </a>
+          </div>
+        </div>
+      )}
       <div className="metrics">
         <Metric
           label="Savollar bazasi"

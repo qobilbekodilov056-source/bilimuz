@@ -106,6 +106,7 @@ export function AuthPage({
     setError(null);
     setMessage("");
   }, [mode]);
+  const referralCode = typeof window !== "undefined" ? (new URLSearchParams(window.location.search).get("ref") || "").trim() : "";
   const form = useRef<HTMLFormElement>(null);
   const navigate = useNavigate();
   const title = {
@@ -129,6 +130,7 @@ export function AuthPage({
               display_name: data.display_name,
               workplace: data.workplace || "",
               account_type: accountType,
+              ref: referralCode,
               consent,
               turnstile_token: challenge,
             }

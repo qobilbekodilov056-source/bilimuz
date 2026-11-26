@@ -149,6 +149,7 @@ export const registrationSchema = z
     display_name: z.string().trim().min(3).max(120),
     workplace: z.string().max(160).default(""),
     account_type: z.enum(["teacher", "learner"]).default("teacher"),
+    ref: z.string().trim().max(64).optional().default(""),
     consent: z.literal(true),
     turnstile_token: z.string().max(2048),
   })

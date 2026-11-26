@@ -158,7 +158,7 @@ export async function getEffectivePlan(db: D1Database, tenantId: string) {
   return { ...PLAN_CATALOG.free, expires_at: 0, note: "" };
 }
 
-async function activateTenantPlan(
+export async function activateTenantPlan(
   db: D1Database,
   tenantId: string,
   plan: "free" | "pro" | "center",

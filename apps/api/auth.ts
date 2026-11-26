@@ -1,6 +1,6 @@
 import { settings } from "./core";
 import { rows } from "./core";
-import { getEffectivePlan, getEffectiveLearnerPlan, LEARNER_PLANS, pickUniqueAmount } from "./billing";
+import { getEffectivePlan, getEffectiveLearnerPlan, LEARNER_PLANS, pickUniqueAmount, activateTenantPlan } from "./billing";
 import { Hono } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { createRemoteJWKSet, jwtVerify } from "jose";
@@ -365,6 +365,70 @@ export async function totp(secret: string, step: number) {
     out[at + 3];
   return String(n % 1000000).padStart(6, "0");
 }
+async function recordReferralIfValid(
+  db: D1Database,
+  refCode: string,
+  referredUserId: string,
+  referredEmail: string,
+) {
+  const code = String(refCode || "").trim();
+  if (!code) return null;
+  try {
+    const refTenant: any = await first(
+      db,
+      "SELECT id, owner_user_id FROM tenants WHERE slug=? AND status='active' LIMIT 1",
+      code,
+    );
+    if (!refTenant || refTenant.owner_user_id === referredUserId) return null;
+    const rid = id();
+    await stmt(
+      db,
+      "INSERT OR IGNORE INTO teacher_referrals(id,referrer_tenant_id,referrer_user_id,referred_user_id,referred_email,ref_code,status,reward_days,created_at) VALUES(?,?,?,?,?,?,'pending',15,?)",
+      rid,
+      refTenant.id,
+      refTenant.owner_user_id,
+      referredUserId,
+      referredEmail,
+      code,
+      now(),
+    ).run();
+    return rid;
+  } catch {
+    return null;
+  }
+}
+
+async function grantReferralReward(db: D1Database, referredUserId: string) {
+  try {
+    const ref: any = await first(
+      db,
+      "SELECT * FROM teacher_referrals WHERE referred_user_id=? AND status='pending' LIMIT 1",
+      referredUserId,
+    );
+    if (!ref) return;
+    const rewardedCnt: any = await first(
+      db,
+      "SELECT COUNT(*) n FROM teacher_referrals WHERE referrer_tenant_id=? AND status='rewarded'",
+      ref.referrer_tenant_id,
+    );
+    if (Number(rewardedCnt?.n || 0) >= 12) return;
+    const days = Number(ref.reward_days || 15);
+    await activateTenantPlan(
+      db,
+      ref.referrer_tenant_id,
+      "pro",
+      days,
+      `Referral bonusi (+${days} kun)`,
+    );
+    await stmt(
+      db,
+      "UPDATE teacher_referrals SET status='rewarded', rewarded_at=? WHERE id=?",
+      now(),
+      ref.id,
+    ).run();
+  } catch {}
+}
+
 export const auth = new Hono<AppEnv>();
 auth.post("/register", async (c) => {
   await rate(c, "register", 5, 3600);
@@ -413,6 +477,7 @@ auth.post("/register", async (c) => {
       ),
     );
     await c.env.DB.batch(statements);
+    if (d.ref) await recordReferralIfValid(c.env.DB, d.ref, uid, d.email);
     await sendAuthEmail(c, d.email, raw, "verify");
     await authAudit(c, "registered", uid);
     return c.json(
@@ -421,6 +486,10 @@ auth.post("/register", async (c) => {
     );
   }
   await c.env.DB.batch(statements);
+  if (d.ref) {
+    await recordReferralIfValid(c.env.DB, d.ref, uid, d.email);
+    await grantReferralReward(c.env.DB, uid);
+  }
   const csrfToken = await session(c, uid, "teacher");
   await authAudit(c, "registered_instant", uid);
   return c.json(
@@ -456,6 +525,8 @@ auth.post("/verify", async (c) => {
   ]);
   if (!result[0].results.length)
     fail("Havola muddati tugagan yoki ishlatilgan", 400);
+  const verifiedUid = String((result[0].results[0] as any)?.id || "");
+  if (verifiedUid) await grantReferralReward(c.env.DB, verifiedUid);
   return c.json({ ok: true });
 });
 auth.post("/resend", async (c) => {

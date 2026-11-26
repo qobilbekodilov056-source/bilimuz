@@ -51,6 +51,33 @@ teacher.use("*", async (c, next) => {
 });
 teacher.route("/library", libraryTeacher);
 teacher.route("/assignments", assignmentsTeacher);
+teacher.get("/referral", async (c) => {
+  const tid = c.get("principal").tenantId!;
+  const tRow: any = await first(c.env.DB, "SELECT slug FROM tenants WHERE id=?", tid);
+  const refCode = String(tRow?.slug || "");
+  let items: any[] = [];
+  try {
+    items = await rows(
+      c.env.DB,
+      "SELECT id, referred_email, status, reward_days, created_at, rewarded_at FROM teacher_referrals WHERE referrer_tenant_id=? ORDER BY created_at DESC LIMIT 30",
+      tid,
+    );
+  } catch {}
+  const rewardedCount = items.filter((x) => x.status === "rewarded").length;
+  const pendingCount = items.filter((x) => x.status === "pending").length;
+  const totalDays = items
+    .filter((x) => x.status === "rewarded")
+    .reduce((a, x) => a + Number(x.reward_days || 15), 0);
+  return c.json({
+    ref_code: refCode,
+    ref_link: `${c.env.APP_ORIGIN}/register?ref=${encodeURIComponent(refCode)}`,
+    rewarded_count: rewardedCount,
+    pending_count: pendingCount,
+    total_days_earned: totalDays,
+    items,
+  });
+});
+
 teacher.get("/overview", async (c) => {
   const tid = c.get("principal").tenantId!;
   await finalizeExpired(c.env, tid);
