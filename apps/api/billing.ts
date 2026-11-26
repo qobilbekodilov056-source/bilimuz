@@ -36,6 +36,76 @@ export const PLAN_CATALOG = {
 
 type PlanId = keyof typeof PLAN_CATALOG;
 
+export const LEARNER_PLANS = {
+  free: {
+    id: "free",
+    name: "Bepul",
+    price: 0,
+  },
+  learner_books: {
+    id: "learner_books",
+    name: "Kitobxon Plus",
+    price: 29000,
+  },
+  learner_pro: {
+    id: "learner_pro",
+    name: "Abituriyent Pro",
+    price: 59000,
+  },
+} as const;
+
+export type LearnerPlanId = keyof typeof LEARNER_PLANS;
+
+export async function getEffectiveLearnerPlan(db: D1Database, userId: string) {
+  try {
+    const row: any = await first(db, "SELECT * FROM learner_plans WHERE user_id=?", userId);
+    const ts = now();
+    if (row && row.plan !== "free" && (Number(row.expires_at) === 0 || Number(row.expires_at) > ts)) {
+      const lp = LEARNER_PLANS[row.plan as LearnerPlanId] || LEARNER_PLANS.free;
+      return { ...lp, expires_at: Number(row.expires_at || 0), note: String(row.note || "") };
+    }
+  } catch {}
+  return { ...LEARNER_PLANS.free, expires_at: 0, note: "" };
+}
+
+export async function activateLearnerPlan(
+  db: D1Database,
+  userId: string,
+  plan: "free" | "learner_books" | "learner_pro",
+  days: number,
+  note = "",
+) {
+  const ts = now();
+  if (plan === "free" || days <= 0) {
+    await stmt(
+      db,
+      `INSERT INTO learner_plans(user_id, plan, expires_at, note, updated_at)
+       VALUES(?, 'free', 0, ?, ?)
+       ON CONFLICT(user_id) DO UPDATE SET plan='free', expires_at=0, note=excluded.note, updated_at=excluded.updated_at`,
+      userId,
+      note,
+      ts,
+    ).run();
+    return 0;
+  }
+  const cur: any = await first(db, "SELECT plan, expires_at FROM learner_plans WHERE user_id=?", userId);
+  const base = cur && cur.plan === plan && Number(cur.expires_at) > ts ? Number(cur.expires_at) : ts;
+  const nextExp = base + days * 86400;
+  await stmt(
+    db,
+    `INSERT INTO learner_plans(user_id, plan, expires_at, note, updated_at)
+     VALUES(?, ?, ?, ?, ?)
+     ON CONFLICT(user_id) DO UPDATE SET plan=excluded.plan, expires_at=excluded.expires_at, note=excluded.note, updated_at=excluded.updated_at`,
+    userId,
+    plan,
+    nextExp,
+    note,
+    ts,
+  ).run();
+  return nextExp;
+}
+
+
 export async function getEffectivePlan(db: D1Database, tenantId: string) {
   try {
     const row = await first(db, "SELECT * FROM tenant_plans WHERE tenant_id=?", tenantId);
@@ -390,6 +460,39 @@ billingWebhook.post("/auto-webhook", async (c) => {
         type: "test_order",
         order_id: testOrd.id,
         card_slug: testOrd.card_slug,
+      });
+    }
+    const learnOrd: any = await first(
+      c.env.DB,
+      `SELECT * FROM learner_billing_orders
+       WHERE status='pending' AND unique_amount=? AND expires_at >= ?
+       ORDER BY created_at DESC LIMIT 1`,
+      d.amount,
+      ts,
+    );
+    if (learnOrd) {
+      const days = Number(learnOrd.months || 1) * 30;
+      const nextExp = await activateLearnerPlan(
+        c.env.DB,
+        learnOrd.user_id,
+        learnOrd.plan,
+        days,
+        `Avto-tasdiq (${d.source})`,
+      );
+      await stmt(
+        c.env.DB,
+        "UPDATE learner_billing_orders SET status='paid', paid_at=?, tx_note=? WHERE id=?",
+        ts,
+        d.raw_text.slice(0, 180) || d.source,
+        learnOrd.id,
+      ).run();
+      return c.json({
+        ok: true,
+        matched: true,
+        type: "learner_plan",
+        order_id: learnOrd.id,
+        plan: learnOrd.plan,
+        expires_at: nextExp,
       });
     }
     return c.json({ ok: false, matched: false, message: "Mos keluvchi faol buyurtma topilmadi" });

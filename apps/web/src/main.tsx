@@ -669,7 +669,7 @@ function App() {
           <Route path="/parent" element={<FeatureGate enabled={cfg.parent_enabled} title="Ota-ona kabineti"><ParentPortal /></FeatureGate>} />
           <Route path="/parent/:code" element={<FeatureGate enabled={cfg.parent_enabled} title="Ota-ona kabineti"><ParentPortal /></FeatureGate>} />
           <Route path="/vazifalar" element={<FeatureGate enabled={cfg.assignments_enabled} title="Vazifalar"><StudentAssignmentsPage /></FeatureGate>} />
-          <Route path="/learner" element={<LearnerCabinetPage />} />
+          <Route path="/learner/*" element={<LearnerCabinetPage />} />
           <Route path="/student" element={<StudentCabinetPage />} />
           <Route path="/student/:code" element={<StudentCabinetPage />} />
           <Route path="/vazifalar/:code" element={<FeatureGate enabled={cfg.assignments_enabled} title="Vazifalar"><StudentAssignmentsPage /></FeatureGate>} />

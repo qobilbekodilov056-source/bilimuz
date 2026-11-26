@@ -94,6 +94,7 @@ export function AuthPage({
     [challenge, setChallenge] = useState(""),
     [version, setVersion] = useState(0),
     [accountType, setAccountType] = useState<"teacher" | "learner">("learner"),
+    [roleChosen, setRoleChosen] = useState(false),
     [consent, setConsent] = useState(false),
     [phone, setPhone] = useState(false),
     [action, setAction] = useState(mode === "owner" ? "owner" : mode);
@@ -197,6 +198,57 @@ export function AuthPage({
     (mode !== "register" || consent) &&
     (mode !== "forgot" || cfg.email_enabled) &&
     (mode !== "register" || cfg.registration_open);
+  if (mode === "register" && !roleChosen) {
+    return (
+      <div style={{ minHeight: "100vh", background: "linear-gradient(145deg, #0f2432 0%, #162d3d 55%, #0c5243 100%)", display: "flex", alignItems: "center", justifyContent: "center", padding: "32px 18px" }}>
+        <div style={{ maxWidth: 820, width: "100%", textAlign: "center" }}>
+          <Link to="/" style={{ display: "inline-flex", alignItems: "center", gap: 10, color: "#fff", textDecoration: "none", marginBottom: 20, fontWeight: 700, fontSize: 18 }}>
+            <img src="/logo.png" alt="Bilim UZ" style={{ width: 38, height: 38, borderRadius: 10 }} />
+            Bilim UZ
+          </Link>
+          <h1 style={{ color: "#fff", margin: "0 0 10px", fontSize: "clamp(26px, 4vw, 40px)" }}>
+            Siz kim sifatida ro‘yxatdan o‘tasiz?
+          </h1>
+          <p style={{ color: "rgba(255,255,255,0.78)", maxWidth: 520, margin: "0 auto 30px", fontSize: 15.5 }}>
+            O‘qituvchi va O‘quvchi/Abituriyent kabinetlari hamda tariflari alohida tuzilgan. O‘zingizga mos yo‘nalishni tanlang:
+          </p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(290px, 1fr))", gap: 20, textAlign: "left" }}>
+            <button
+              type="button"
+              onClick={() => { setAccountType("learner"); setRoleChosen(true); }}
+              style={{ background: "#fff", border: "2px solid transparent", borderRadius: 22, padding: 28, cursor: "pointer", display: "flex", flexDirection: "column", gap: 10, boxShadow: "0 20px 44px rgba(0,0,0,0.22)" }}
+            >
+              <span style={{ fontSize: 38 }}>🎓</span>
+              <strong style={{ fontSize: 22, color: "#11191e" }}>O‘quvchi / Abituriyent</strong>
+              <p style={{ margin: 0, color: "#475569", fontSize: 14.5, lineHeight: 1.55 }}>
+                IELTS, DTM, fan testlarini yechish, elektron kitob va qo‘llanmalarni o‘qish, natijalarni kuzatish hamda shaxsiy kutubxona yig‘ish uchun.
+              </p>
+              <span style={{ marginTop: "auto", paddingTop: 10, color: "#0c8066", fontWeight: 700, fontSize: 14.5 }}>
+                Abituriyent sifatida davom etish →
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => { setAccountType("teacher"); setRoleChosen(true); }}
+              style={{ background: "#fff", border: "2px solid transparent", borderRadius: 22, padding: 28, cursor: "pointer", display: "flex", flexDirection: "column", gap: 10, boxShadow: "0 20px 44px rgba(0,0,0,0.22)" }}
+            >
+              <span style={{ fontSize: 38 }}>👨‍🏫</span>
+              <strong style={{ fontSize: 22, color: "#11191e" }}>O‘qituvchi / O‘quv markazi</strong>
+              <p style={{ margin: 0, color: "#475569", fontSize: 14.5, lineHeight: 1.55 }}>
+                Shaxsiy workspace yaratish, Excel’dan 100 ta test yuklash, guruhlar, kurs jurnali, vazifalar va ota-ona Telegram botini boshqarish uchun.
+              </p>
+              <span style={{ marginTop: "auto", paddingTop: 10, color: "#162d3d", fontWeight: 700, fontSize: 14.5 }}>
+                O‘qituvchi sifatida davom etish →
+              </span>
+            </button>
+          </div>
+          <p style={{ marginTop: 24, color: "rgba(255,255,255,0.75)", fontSize: 14 }}>
+            Allaqachon hisobingiz bormi? <Link to="/login" style={{ color: "#7cf2d2", fontWeight: 700 }}>Kirish</Link>
+          </p>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="auth-page">
       <section className="auth-story">

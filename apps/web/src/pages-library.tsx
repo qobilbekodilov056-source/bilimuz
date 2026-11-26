@@ -627,8 +627,8 @@ export function LibraryBookReader() {
                       <button type="button" className="btn primary" onClick={() => setBuyModal(true)}>
                         Alohida sotib olish — {Number(book.price_uzs || 0).toLocaleString("uz-UZ")} so‘m
                       </button>
-                      <Link className="btn secondary" to="/studio/billing">
-                        ⚡ Obuna bilan hammasini ochish (49 000 so‘m/oy)
+                      <Link className="btn secondary" to="/learner/billing">
+                        ⚡ Obuna bilan hammasini ochish (29 000 so‘m/oy dan)
                       </Link>
                     </div>
                   </div>

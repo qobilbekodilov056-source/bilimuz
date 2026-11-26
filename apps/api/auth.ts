@@ -1,5 +1,6 @@
+import { settings } from "./core";
 import { rows } from "./core";
-import { getEffectivePlan } from "./billing";
+import { getEffectivePlan, getEffectiveLearnerPlan, LEARNER_PLANS } from "./billing";
 import { Hono } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { createRemoteJWKSet, jwtVerify } from "jose";
@@ -743,7 +744,7 @@ auth.get("/learner-hub", async (c) => {
     "SELECT id, display_name, email, workplace, account_type FROM users WHERE id=?",
     p.userId,
   );
-  const plan = p.tenantId ? await getEffectivePlan(c.env.DB, p.tenantId) : { id: "free", name: "Start (Bepul)", expires_at: 0 };
+  const plan = await getEffectiveLearnerPlan(c.env.DB, p.userId);
   const paidBooks = await rows(
     c.env.DB,
     `SELECT DISTINCT b.id, b.title, b.subject, b.summary, b.cover_key, b.price_uzs, b.updated_at, o.paid_at
@@ -762,12 +763,22 @@ auth.get("/learner-hub", async (c) => {
      ORDER BY o.paid_at DESC LIMIT 50`,
     p.userId,
   );
+  let testHistory: any[] = [];
+  try {
+    testHistory = await rows(
+      c.env.DB,
+      "SELECT id, card_slug, card_title, score, max_score, percentage, passed, duration_seconds, created_at FROM learner_test_history WHERE user_id=? ORDER BY created_at DESC LIMIT 50",
+      p.userId,
+    );
+  } catch {}
   return c.json({
     user: { ...u, scope: p.scope, account_type: u?.account_type || "teacher" },
     plan,
-    has_pro_access: p.scope === "owner" || plan.id !== "free",
+    has_books_access: p.scope === "owner" || plan.id === "learner_books" || plan.id === "learner_pro",
+    has_tests_access: p.scope === "owner" || plan.id === "learner_pro",
     paid_books: paidBooks,
     paid_tests: paidTests,
+    test_history: testHistory,
   });
 });
 
@@ -776,6 +787,90 @@ auth.post("/account-type", async (c) => {
   const d = await body(c, z.object({ account_type: z.enum(["teacher", "learner"]) }).strict());
   await stmt(c.env.DB, "UPDATE users SET account_type=? WHERE id=?", d.account_type, p.userId).run();
   return c.json({ ok: true, account_type: d.account_type });
+});
+
+
+auth.get("/learner-billing/status", async (c) => {
+  const p = await authenticate(c);
+  const plan = await getEffectiveLearnerPlan(c.env.DB, p.userId);
+  const stg: any = await settings(c.env);
+  const orders = await rows(
+    c.env.DB,
+    "SELECT id, plan, months, base_amount, unique_amount, status, created_at, paid_at FROM learner_billing_orders WHERE user_id=? ORDER BY created_at DESC LIMIT 15",
+    p.userId,
+  );
+  return c.json({
+    plan,
+    plans: LEARNER_PLANS,
+    card_number: String(stg.billing_card_number || ""),
+    card_holder: String(stg.billing_card_holder || ""),
+    bank_name: String(stg.billing_bank_name || ""),
+    orders,
+  });
+});
+
+auth.post("/learner-billing/create-order", async (c) => {
+  const p = await authenticate(c);
+  const d = await body(
+    c,
+    z.object({
+      plan: z.enum(["learner_books", "learner_pro"]),
+      months: z.coerce.number().int().min(1).max(12).default(1),
+    }).strict(),
+  );
+  const stg: any = await settings(c.env);
+  if (!String(stg.billing_card_number || "").trim()) {
+    fail("To‘lov kartasi hali sozlanmagan", 400);
+  }
+  const ts = now();
+  const discountMul = d.months >= 12 ? 0.8 : d.months >= 6 ? 0.85 : d.months >= 3 ? 0.9 : 1;
+  const baseAmount = Math.round((LEARNER_PLANS[d.plan].price * d.months * discountMul) / 1000) * 1000;
+  let uniqueAmount = baseAmount + 101 + Math.floor(Math.random() * 880);
+  for (let i = 0; i < 8; i++) {
+    const c1 = await first(c.env.DB, "SELECT id FROM billing_orders WHERE status='pending' AND unique_amount=? AND expires_at>=?", uniqueAmount, ts);
+    const c2 = await first(c.env.DB, "SELECT id FROM learner_billing_orders WHERE status='pending' AND unique_amount=? AND expires_at>=?", uniqueAmount, ts);
+    if (!c1 && !c2) break;
+    uniqueAmount = baseAmount + 101 + Math.floor(Math.random() * 880);
+  }
+  const oid = id();
+  const expiresAt = ts + 30 * 60;
+  await stmt(
+    c.env.DB,
+    `INSERT INTO learner_billing_orders(id, user_id, plan, months, base_amount, unique_amount, status, tx_note, created_at, expires_at)
+     VALUES(?,?,?,?,?,?,'pending','',?,?)`,
+    oid,
+    p.userId,
+    d.plan,
+    d.months,
+    baseAmount,
+    uniqueAmount,
+    ts,
+    expiresAt,
+  ).run();
+  return c.json({
+    order_id: oid,
+    plan: d.plan,
+    plan_name: LEARNER_PLANS[d.plan].name,
+    months: d.months,
+    base_amount: baseAmount,
+    unique_amount: uniqueAmount,
+    expires_at: expiresAt,
+    card_number: String(stg.billing_card_number || ""),
+    card_holder: String(stg.billing_card_holder || ""),
+    bank_name: String(stg.billing_bank_name || ""),
+  }, 201);
+});
+
+auth.get("/learner-billing/order/:oid/status", async (c) => {
+  const p = await authenticate(c);
+  const o: any = await first(
+    c.env.DB,
+    "SELECT id, status, plan, paid_at FROM learner_billing_orders WHERE id=? AND user_id=?",
+    c.req.param("oid"),
+    p.userId,
+  );
+  if (!o) fail("Buyurtma topilmadi", 404);
+  return c.json({ order_id: o.id, status: o.status, paid: o.status === "paid", plan: o.plan });
 });
 
 auth.post("/logout", async (c) => {

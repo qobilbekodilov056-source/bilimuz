@@ -1,5 +1,6 @@
+import { settings } from "./core";
 import { authenticate } from "./auth";
-import { getEffectivePlan } from "./billing";
+import { getEffectivePlan, getEffectiveLearnerPlan } from "./billing";
 function calcAttemptCoins(pct: number, passed: boolean, s: any): number {
   const custom = Number(s?.reward_coins || 0);
   if (passed && custom > 0) return custom;
@@ -902,11 +903,12 @@ exam.post("/practice/:slug/buy", async (c) => {
     expiresAt,
   ).run();
 
-  const cfgRow: any = await first(c.env.DB, "SELECT value_json FROM system_settings WHERE key='billing_card'");
-  let bankCard = { card_number: "", card_holder: "", bank_name: "" };
-  try {
-    if (cfgRow?.value_json) bankCard = { ...bankCard, ...JSON.parse(cfgRow.value_json) };
-  } catch {}
+  const stg: any = await settings(c.env);
+  const bankCard = {
+    card_number: String(stg.billing_card_number || ""),
+    card_holder: String(stg.billing_card_holder || ""),
+    bank_name: String(stg.billing_bank_name || ""),
+  };
 
   return c.json({
     order_id: oid,
@@ -958,6 +960,10 @@ exam.get("/practice/:slug", async (c) => {
   }
   if (priceUzs > 0) {
     let unlocked = principal.scope === "owner";
+    if (!unlocked) {
+      const lp = await getEffectiveLearnerPlan(c.env.DB, principal.userId);
+      if (lp.id === "learner_pro") unlocked = true;
+    }
     if (!unlocked && principal.tenantId) {
       const plan = await getEffectivePlan(c.env.DB, principal.tenantId);
       if (plan.id !== "free") unlocked = true;
@@ -1108,6 +1114,26 @@ exam.post("/practice/:slug/grade", async (c) => {
       }
     } catch {}
   }
+  try {
+    const lpUser = await authenticate(c);
+    if (lpUser?.userId) {
+      await stmt(
+        c.env.DB,
+        `INSERT INTO learner_test_history(id, user_id, card_slug, card_title, score, max_score, percentage, passed, duration_seconds, created_at)
+         VALUES(?,?,?,?,?,?,?,?,?,?)`,
+        id(),
+        lpUser.userId,
+        card.slug,
+        card.title,
+        score,
+        maxScore,
+        percentage,
+        percentage >= s.pass_percent ? 1 : 0,
+        d.duration_seconds,
+        now(),
+      ).run();
+    }
+  } catch {}
   await stmt(
     c.env.DB,
     "UPDATE cards SET market_solves=COALESCE(market_solves,0)+1, market_score_sum=COALESCE(market_score_sum,0)+? WHERE tenant_id=? AND id=?",

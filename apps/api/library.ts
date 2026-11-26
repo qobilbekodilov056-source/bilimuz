@@ -1,9 +1,9 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "./types";
-import { body, fail, first, id, now, rate, rows, stmt } from "./core";
+import { body, fail, first, id, now, rate, rows, settings, stmt } from "./core";
 import { authenticate } from "./auth";
-import { getEffectivePlan } from "./billing";
+import { getEffectivePlan, getEffectiveLearnerPlan } from "./billing";
 
 export const libraryPublic = new Hono<AppEnv>();
 export const libraryTeacher = new Hono<AppEnv>();
@@ -316,11 +316,12 @@ libraryPublic.post("/:id/buy", async (c) => {
     expiresAt,
   ).run();
 
-  const cfgRow: any = await first(c.env.DB, "SELECT value_json FROM system_settings WHERE key='billing_card'");
-  let card = { card_number: "", card_holder: "", bank_name: "" };
-  try {
-    if (cfgRow?.value_json) card = { ...card, ...JSON.parse(cfgRow.value_json) };
-  } catch {}
+  const stg: any = await settings(c.env);
+  const card = {
+    card_number: String(stg.billing_card_number || ""),
+    card_holder: String(stg.billing_card_holder || ""),
+    bank_name: String(stg.billing_bank_name || ""),
+  };
 
   return c.json({
     order_id: oid,
@@ -419,11 +420,17 @@ libraryPublic.get("/:id", async (c) => {
     if (principal.scope === "owner") {
       unlocked = true;
       unlockedVia = "subscription";
-    } else if (principal.tenantId) {
-      const plan = await getEffectivePlan(c.env.DB, principal.tenantId);
-      if (plan.id !== "free") {
+    } else {
+      const lp = await getEffectiveLearnerPlan(c.env.DB, principal.userId);
+      if (lp.id !== "free") {
         unlocked = true;
         unlockedVia = "subscription";
+      } else if (principal.tenantId) {
+        const plan = await getEffectivePlan(c.env.DB, principal.tenantId);
+        if (plan.id !== "free") {
+          unlocked = true;
+          unlockedVia = "subscription";
+        }
       }
     }
   }
