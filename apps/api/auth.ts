@@ -185,37 +185,124 @@ export function newTeacherStatements(
     ],
   };
 }
+const DISPOSABLE_EMAIL_DOMAINS = new Set([
+  "mailinator.com", "tempmail.com", "temp-mail.org", "temp-mail.io",
+  "10minutemail.com", "10minutemail.net", "guerrillamail.com", "guerrillamail.net",
+  "guerrillamail.org", "sharklasers.com", "yopmail.com", "yopmail.fr",
+  "throwawaymail.com", "trashmail.com", "trashmail.net", "getnada.com",
+  "mohmal.com", "maildrop.cc", "dispostable.com", "fakeinbox.com",
+  "mintemail.com", "dropmail.me", "emailondeck.com", "tempail.com",
+  "mailnesia.com", "inboxbear.com", "tempr.email", "burnermail.io",
+  "moakt.com", "mailcatch.com", "spamgourmet.com", "mytemp.email",
+]);
+
+async function validateRealEmailDomain(email: string) {
+  const domain = String(email || "").split("@")[1]?.trim().toLowerCase() || "";
+  if (!domain || !domain.includes(".") || domain.length > 253) {
+    fail("Email manzil noto‘g‘ri kiritilgan", 400);
+  }
+  if (DISPOSABLE_EMAIL_DOMAINS.has(domain)) {
+    fail("Bir martalik (vaqtinchalik) email manzillardan foydalanish taqiqlangan. Haqiqiy pochtangizni kiriting.", 400);
+  }
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 2500);
+    const res = await fetch(
+      `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(domain)}&type=MX`,
+      { headers: { Accept: "application/dns-json" }, signal: controller.signal },
+    );
+    clearTimeout(timer);
+    if (res.ok) {
+      const data: any = await res.json();
+      // Status 3 = NXDOMAIN (domen umuman mavjud emas)
+      if (data?.Status === 3) {
+        fail("Bunday email domeni mavjud emas. Haqiqiy pochta manzilingizni tekshirib kiriting.", 400);
+      }
+      const answers = Array.isArray(data?.Answer) ? data.Answer : [];
+      const hasMx = answers.some((a: any) => a.type === 15 && a.data && !String(a.data).endsWith(" ."));
+      if (!hasMx) {
+        fail("Ushbu email domenida pochta qabul qilish (MX) sozlanmagan. Haqiqiy email kiriting.", 400);
+      }
+    }
+  } catch (e: any) {
+    if (e?.status === 400) throw e;
+    // Tarmoq timeout bo'lsa, haqiqiy foydalanuvchini bloklamaslik uchun o'tkazib yuboramiz
+  }
+}
+
 async function sendAuthEmail(
   c: Ctx,
   email: string,
   raw: string,
   purpose: "verify" | "reset",
 ) {
-  if (!c.env.RESEND_API_KEY || !c.env.EMAIL_FROM)
+  const fromRaw = c.env.EMAIL_FROM || "";
+  if ((!c.env.RESEND_API_KEY && !c.env.BREVO_API_KEY) || !fromRaw)
     fail("Email yetkazish xizmati hali sozlanmagan", 503);
+
   const link = `${c.env.APP_ORIGIN}/${purpose === "verify" ? "verify-email" : "reset-password"}#token=${raw}`;
-  const r = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${c.env.RESEND_API_KEY}`,
-      "Content-Type": "application/json",
-      "Idempotency-Key": await digest(raw),
-    },
-    body: json({
-      from: c.env.EMAIL_FROM,
-      to: [email],
-      subject:
-        purpose === "verify"
-          ? "TestLab — emailingizni tasdiqlang"
-          : "TestLab — parolni tiklash",
-      text: `${purpose === "verify" ? "Hisobingizni tasdiqlash" : "Parolni tiklash"} uchun: ${link}\nHavola 30 daqiqa amal qiladi. Agar so‘rov sizdan bo‘lmasa, uni e’tiborsiz qoldiring.`,
-    }),
-  });
-  if (!r.ok)
-    fail(
-      "Emailni yetkazib bo‘lmadi. Qayta yuborish tugmasidan foydalaning.",
-      503,
-    );
+  const subject =
+    purpose === "verify"
+      ? "Bilim UZ — emailingizni tasdiqlang"
+      : "Bilim UZ — parolni tiklash";
+  const text = `${purpose === "verify" ? "Bilim UZ hisobingizni tasdiqlash" : "Bilim UZ parolini tiklash"} uchun havola: ${link}\nHavola 30 daqiqa amal qiladi. Agar so‘rov sizdan bo‘lmasa, uni e’tiborsiz qoldiring.`;
+  const html = `<div style="font-family:Inter,Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#0f172a;background:#f8fafc;border-radius:16px">
+    <h2 style="margin:0 0 12px;color:#0f172a">Bilim UZ</h2>
+    <p style="margin:0 0 18px;line-height:1.6;color:#334155">${purpose === "verify" ? "Hisobingizni faollashtirish va haqiqiy emailingizni tasdiqlash uchun quyidagi tugmani bosing:" : "Parolingizni yangilash uchun quyidagi tugmani bosing:"}</p>
+    <p style="margin:0 0 20px"><a href="${link}" style="display:inline-block;padding:12px 22px;background:#0f766e;color:#ffffff;text-decoration:none;border-radius:10px;font-weight:600">${purpose === "verify" ? "Emailni tasdiqlash" : "Parolni tiklash"}</a></p>
+    <p style="margin:0;font-size:12px;color:#64748b">Havola 30 daqiqa amal qiladi. Agar bu so‘rov sizdan bo‘lmasa, xatni e’tiborsiz qoldiring.</p>
+  </div>`;
+
+  // 1-urinish: Resend (3 000/oy, 100/kun bepul)
+  if (c.env.RESEND_API_KEY) {
+    try {
+      const r = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${c.env.RESEND_API_KEY}`,
+          "Content-Type": "application/json",
+          "Idempotency-Key": await digest(raw),
+        },
+        body: json({
+          from: fromRaw,
+          to: [email],
+          subject,
+          text,
+          html,
+        }),
+      });
+      if (r.ok) return;
+    } catch {}
+  }
+
+  // 2-urinish (avto-zaxira): Brevo (300/kun bepul)
+  if (c.env.BREVO_API_KEY) {
+    const m = fromRaw.match(/^\s*(?:"?([^"<]+)"?\s*)?<([^>]+)>\s*$/);
+    const senderName = (m?.[1] || "Bilim UZ").trim();
+    const senderEmail = (m?.[2] || fromRaw).trim();
+    try {
+      const b = await fetch("https://api.brevo.com/v3/smtp/email", {
+        method: "POST",
+        headers: {
+          "api-key": c.env.BREVO_API_KEY,
+          "Content-Type": "application/json",
+        },
+        body: json({
+          sender: { name: senderName, email: senderEmail },
+          to: [{ email }],
+          subject,
+          textContent: text,
+          htmlContent: html,
+        }),
+      });
+      if (b.ok) return;
+    } catch {}
+  }
+
+  fail(
+    "Emailni yetkazib bo‘lmadi. Qayta yuborish tugmasidan foydalaning.",
+    503,
+  );
 }
 export async function verifyTelegramIdToken(
   idToken: string,
@@ -287,11 +374,12 @@ auth.post("/register", async (c) => {
   await turnstile(c, d.turnstile_token, ["register", "login"]);
   if (!c.env.PASSWORD_PEPPER)
     fail("Parol xizmati sozlanmagan", 503);
+  await validateRealEmailDomain(d.email);
   if (await first(c.env.DB, "SELECT id FROM users WHERE email=?", d.email))
     fail("Bu email allaqachon ro‘yxatdan o‘tgan. Tizimga kiring yoki parolni tiklang.", 409);
   const uid = id(),
     raw = token();
-  const hasEmailSender = Boolean(c.env.RESEND_API_KEY && c.env.EMAIL_FROM);
+  const hasEmailSender = Boolean((c.env.RESEND_API_KEY || c.env.BREVO_API_KEY) && c.env.EMAIL_FROM);
   const { statements } = newTeacherStatements(c, {
     id: uid,
     email: d.email,

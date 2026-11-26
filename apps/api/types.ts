@@ -12,6 +12,7 @@ export interface Bindings extends Omit<
   TURNSTILE_SECRET?: string;
   PASSWORD_PEPPER?: string;
   RESEND_API_KEY?: string;
+  BREVO_API_KEY?: string;
   EMAIL_FROM?: string;
   MFA_ENCRYPTION_KEY?: string;
   BACKUP_ENCRYPTION_KEY?: string;
