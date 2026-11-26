@@ -1404,41 +1404,82 @@ export function PracticeCatalog() {
           <p className="muted">Hozircha ochiq test kartochkalari topilmadi.</p>
         </div>
       ) : (
-        <div className="cards-grid">
-          {filtered.map((c: any) => (
-            <article className="panel test-card" key={c.slug}>
-              <div className="test-card-top">
-                <Pill tone={Number(c.price_uzs) > 0 ? "amber" : "green"}>
-                  {Number(c.price_uzs) > 0 ? <><Lock size={12} color="#b45309" /> {Number(c.price_uzs).toLocaleString("uz-UZ")} so‘m</> : (c.category || "Ochiq test")}
-                </Pill>
-                <small className="muted">{c.slug}</small>
-              </div>
-              <h2>{c.title}</h2>
-              <p>{c.description || "Ro‘yxatdan o‘tmasdan mashq testi"}</p>
-              {c.reward && <div className="card-reward" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Trophy size={15} color="#d97706" /> Yutuq: {c.reward}</div>}
-              <div className="test-card-details">
-                <span>
-                  <BookOpen size={15} />
-                  {c.question_count} savol
-                </span>
-                <span>
-                  <Clock3 size={15} />
-                  {c.duration_minutes} daqiqa
-                </span>
-                <span>
-                  <Flag size={15} />
-                  {c.pass_percent}%
-                </span>
-              </div>
-              <Link
-                className="btn primary full"
-                to={"/practice/" + encodeURIComponent(c.slug)}
-              >
-                Testni boshlash
-                <ArrowRight size={17} />
-              </Link>
-            </article>
-          ))}
+        <div className="cards-grid practice-pro-grid">
+          {filtered.map((c: any) => {
+            const isPaid = Number(c.price_uzs) > 0;
+            const cat = String(c.category || "Umumiy");
+            const catLow = cat.toLowerCase();
+            const theme = isPaid
+              ? { bar: "linear-gradient(90deg, #f59e0b, #d97706)", bg: "#fffbeb", fg: "#b45309", border: "#fde68a" }
+              : catLow.includes("ingliz") || catLow.includes("ielts")
+                ? { bar: "linear-gradient(90deg, #6366f1, #4f46e5)", bg: "#eef2ff", fg: "#4338ca", border: "#c7d2fe" }
+                : catLow.includes("matem") || catLow.includes("fizika")
+                  ? { bar: "linear-gradient(90deg, #0ea5e9, #2563eb)", bg: "#eff6ff", fg: "#1d4ed8", border: "#bfdbfe" }
+                  : { bar: "linear-gradient(90deg, #10b981, #0c8066)", bg: "#ecfdf5", fg: "#047857", border: "#a7f3d0" };
+            return (
+              <article className="panel practice-pro-card" key={c.slug} style={{ "--card-accent": theme.bar } as any}>
+                <div className="practice-pro-stripe" />
+                <div className="practice-pro-head">
+                  <span className="practice-pro-badge" style={{ background: theme.bg, color: theme.fg, borderColor: theme.border }}>
+                    {isPaid ? <Lock size={12} color={theme.fg} /> : <CheckCircle2 size={12} color={theme.fg} />}
+                    {cat}
+                  </span>
+                  <span className="practice-pro-code" title={c.slug}>{c.slug}</span>
+                </div>
+
+                <h2 className="practice-pro-title">{c.title}</h2>
+                <p className="practice-pro-desc">
+                  {c.description || "Interaktiv onlayn test — darhol natija, xatolar tahlili va sertifikat bilan."}
+                </p>
+
+                {c.reward && (
+                  <div className="practice-pro-reward">
+                    <Trophy size={14} color="#d97706" />
+                    <span>Yutuq: {c.reward}</span>
+                  </div>
+                )}
+
+                <div className="practice-pro-metrics">
+                  <span className="practice-pro-chip">
+                    <BookOpen size={14} color="#0c8066" />
+                    <strong>{c.question_count}</strong> savol
+                  </span>
+                  <span className="practice-pro-chip">
+                    <Clock3 size={14} color="#2563eb" />
+                    <strong>{c.duration_minutes}</strong> daqiqa
+                  </span>
+                  <span className="practice-pro-chip">
+                    <Flag size={14} color="#d97706" />
+                    <strong>{c.pass_percent}%</strong> o‘tish
+                  </span>
+                </div>
+
+                <div className="practice-pro-footer">
+                  <div className="practice-pro-price">
+                    {isPaid ? (
+                      <>
+                        <span className="practice-pro-price-val is-paid">{Number(c.price_uzs).toLocaleString("uz-UZ")} so‘m</span>
+                        <small className="muted">yoki Abituriyent Pro</small>
+                      </>
+                    ) : (
+                      <>
+                        <span className="practice-pro-price-val is-free">Bepul</span>
+                        <small className="muted">{Number(c.market_solves || 0) > 0 ? `${c.market_solves} marta yechilgan` : "Ochiq mashq"}</small>
+                      </>
+                    )}
+                  </div>
+                  <Link
+                    className={"btn " + (isPaid ? "primary" : "primary")}
+                    style={isPaid ? { background: "linear-gradient(135deg, #162d3d, #0f172a)" } : undefined}
+                    to={"/practice/" + encodeURIComponent(c.slug)}
+                  >
+                    Boshlash
+                    <ArrowRight size={16} />
+                  </Link>
+                </div>
+              </article>
+            );
+          })}
         </div>
       )}
     </div>
