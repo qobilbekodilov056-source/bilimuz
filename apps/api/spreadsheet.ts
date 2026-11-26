@@ -18,11 +18,16 @@ function parse(bytes: Uint8Array) {
   if (/<!DOCTYPE|<!ENTITY/i.test(text)) fail("XML entity/DTD ruxsat etilmagan");
   return xmlParser.parse(text);
 }
+function decodeNumEntities(str: string): string {
+  return str
+    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCodePoint(parseInt(h, 16)));
+}
 function textOf(value: any): string {
   if (typeof value === "string" || typeof value === "number")
-    return String(value);
+    return decodeNumEntities(String(value));
   if (value === undefined || value === null) return "";
-  if (value["#text"] !== undefined) return String(value["#text"]);
+  if (value["#text"] !== undefined) return decodeNumEntities(String(value["#text"]));
   if (value.r)
     return array(value.r)
       .map((r: any) => textOf(r.t))
