@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
   ArrowDownToLine,
@@ -10,7 +10,11 @@ import {
   ClipboardList,
   Clock3,
   Copy,
+  Crown,
+  Database,
   FileSpreadsheet,
+  Lock,
+  Package,
   FolderOpen,
   Mail,
   Pencil,
@@ -743,6 +747,10 @@ export function Questions() {
             >
               📄 Oflayn PDF test
             </button>
+            <Link to="/studio/store" className="btn secondary">
+              <Database size={16} color="#059669" />
+              Umumiy bazadan olish
+            </Link>
             <Link to="/studio/imports" className="btn secondary">
               <UploadCloud size={16} />
               Import
@@ -838,14 +846,6 @@ export function Questions() {
                     type="button"
                     className="btn secondary tiny"
                     disabled={busy}
-                    onClick={() => void runBulk("submit_store")}
-                  >
-                    Marketga yuborish
-                  </button>
-                  <button
-                    type="button"
-                    className="btn secondary tiny"
-                    disabled={busy}
                     onClick={() => void runBulk("category")}
                   >
                     Packni o‘zgartirish
@@ -915,18 +915,6 @@ export function Questions() {
                     onClick={() => setEditor(q)}
                   >
                     <Pencil size={17} />
-                  </button>
-                  <button
-                    className="icon-btn"
-                    aria-label="Storega taklif qilish"
-                    onClick={() => {
-                      setOffer(q);
-                      setConsent(false);
-                      setOriginal(false);
-                      setError(null);
-                    }}
-                  >
-                    <Send size={17} />
                   </button>
                   <button
                     className="icon-btn"
@@ -2422,25 +2410,6 @@ export function Cards() {
                       Arxiv
                     </button>
                   )}
-                  {r.status === "active" && r.access_mode === "open" && !r.group_id && (
-                    r.market_status === "approved" || r.market_status === "pending" ? (
-                      <button
-                        className="btn ghost tiny"
-                        disabled={busy}
-                        onClick={() => void action(r, "market_remove")}
-                      >
-                        Marketdan olish
-                      </button>
-                    ) : (
-                      <button
-                        className="btn secondary tiny"
-                        disabled={busy}
-                        onClick={() => void action(r, "market_submit")}
-                      >
-                        Marketga yuborish
-                      </button>
-                    )
-                  )}
                   <button
                     className="btn ghost tiny"
                     onClick={() => setCommentsCard(r)}
@@ -2964,6 +2933,13 @@ function PublicCommentsModal({ card, onClose }: { card: any; onClose: () => void
 
 export function StorePage({ publicView = false }: { publicView?: boolean }) {
   const [storeTab, setStoreTab] = useState<"cards" | "packs" | "questions">("packs");
+  const [planId, setPlanId] = useState<string>("free");
+  useEffect(() => {
+    if (publicView) return;
+    api<any>(base + "/billing/status")
+      .then((d) => setPlanId(d?.plan?.id || "free"))
+      .catch(() => {});
+  }, [publicView]);
   const [viewComments, setViewComments] = useState<any>(null);
   const marketCards = useData("/api/v2/public/market-cards");
   const storePacks = useData("/api/v2/store/packs");
@@ -3021,7 +2997,7 @@ export function StorePage({ publicView = false }: { publicView?: boolean }) {
         method: "POST",
         data: { category: cat, limit: 100 },
       });
-      toast(`📦 «${cat}» packidan ${res.copied} ta savol bazangizga yuklandi${res.skipped ? ` (${res.skipped} tasi mavjud)` : ""}`);
+      toast(`«${cat}» packidan ${res.copied} ta savol bazangizga yuklandi${res.skipped ? ` (${res.skipped} tasi mavjud)` : ""}`);
     } catch (e) {
       setError(e);
     } finally {
@@ -3062,9 +3038,9 @@ export function StorePage({ publicView = false }: { publicView?: boolean }) {
   const content = (
     <>
       <PageTitle
-        eyebrow="BILIM ULASHISH MADANIYATI"
-        title="Savollar do‘koni"
-        description="Mualliflar roziligi bilan, Owner moderatsiyasidan o‘tgan bepul savollar."
+        eyebrow="UMUMIY SAVOLLAR BAZASI"
+        title="Umumiy savollar bazasi"
+        description="Owner tasdiqlagan umumiy savollar va tayyor testlar bazasi — Ustoz Pro va Ultra tariflari uchun ochiq."
         actions={
           publicView ? (
             <Link className="btn primary" to="/register">
@@ -3073,13 +3049,43 @@ export function StorePage({ publicView = false }: { publicView?: boolean }) {
           ) : undefined
         }
       />
+      {!publicView && planId === "free" && (
+        <div
+          className="panel"
+          style={{
+            marginBottom: 14,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+            flexWrap: "wrap",
+            borderColor: "#fde68a",
+            background: "#fffbeb",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <Lock size={18} color="#d97706" />
+            <div>
+              <strong style={{ color: "#92400e", display: "block" }}>
+                Umumiy savollar bazasidan yuklab olish — pulli tariflarda
+              </strong>
+              <small style={{ color: "#b45309" }}>
+                Savollar va packlarni ko‘rib chiqishingiz mumkin. Shaxsiy bazangizga 1 bosishda yuklab olish uchun Ustoz Pro yoki Ultra tarifini yoqing.
+              </small>
+            </div>
+          </div>
+          <Link className="btn primary tiny" to="/pricing" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <Crown size={14} /> Tarifni yangilash
+          </Link>
+        </div>
+      )}
       <div className="tabs-bar">
         <button
           type="button"
           className={storeTab === "packs" ? "btn primary tiny" : "btn secondary tiny"}
           onClick={() => setStoreTab("packs")}
         >
-          📦 Mavzu bo‘yicha packlar ({storePacks.data?.packs?.length ?? 0})
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Package size={14} /> Mavzu bo‘yicha packlar ({storePacks.data?.packs?.length ?? 0})</span>
         </button>
         <button
           type="button"
@@ -3115,7 +3121,7 @@ export function StorePage({ publicView = false }: { publicView?: boolean }) {
               {storePacks.data.packs.map((pk: any) => (
                 <article className="panel test-card" key={pk.category} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   <div className="test-card-top">
-                    <Pill tone="green">📦 {pk.total} ta savol</Pill>
+                    <Pill tone="green"><span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><Package size={13} /> {pk.total} ta savol</span></Pill>
                     <small className="muted">
                       {pk.easy ? `Oson: ${pk.easy}` : ""}{pk.medium ? ` · O‘rta: ${pk.medium}` : ""}{pk.hard ? ` · Qiyin: ${pk.hard}` : ""}
                     </small>

@@ -484,7 +484,7 @@ function Moderation() {
     <>
       <PageTitle
         title="Store moderatsiyasi"
-        description="Faqat muallif ixtiyoriy yuborgan savollar ko‘rsatiladi."
+        description="O‘qituvchilar yuklagan yangi savollar, test kartalari va kitoblar avtomatik shu yerga tushadi. Tasdiqlasangiz umumiy baza va marketga chiqadi."
       />
       <div className="tabs">
         {[

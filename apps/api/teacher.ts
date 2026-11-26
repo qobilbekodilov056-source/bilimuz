@@ -652,7 +652,7 @@ teacher.post("/cards/:id/status", async (c) => {
       ),
       stmt(
         c.env.DB,
-        "UPDATE cards SET published_version=1,status='active',updated_at=? WHERE tenant_id=? AND id=? AND published_version=0",
+        "UPDATE cards SET published_version=1,status='active',market_status=CASE WHEN market_status='none' THEN 'pending' ELSE market_status END,updated_at=? WHERE tenant_id=? AND id=? AND published_version=0",
         now(),
         tid,
         r.id,
@@ -1307,7 +1307,20 @@ teacher.get("/submissions", async (c) =>
   }),
 );
 
+async function requirePaidStoreAccess(c: Ctx) {
+  const p = c.get("principal");
+  if (p.scope === "owner") return;
+  const plan = await getEffectivePlan(c.env.DB, p.tenantId!);
+  if (plan.id === "free") {
+    fail(
+      "Umumiy savollar bazasidan yuklab olish pulli tariflar (Ustoz Pro yoki Ultra) uchun ochiq. Tarifni yangilash uchun «Tarifni yangilash» (/pricing) bo‘limiga o‘ting.",
+      403,
+    );
+  }
+}
+
 teacher.post("/store/copy-pack", async (c) => {
+  await requirePaidStoreAccess(c);
   if (!(await settings(c.env)).store_enabled)
     fail("Savollar do‘koni vaqtincha yopiq", 503);
   const d = await body(
@@ -1354,6 +1367,7 @@ teacher.post("/store/copy-pack", async (c) => {
 });
 
 teacher.post("/store/copy-bulk", async (c) => {
+  await requirePaidStoreAccess(c);
   if (!(await settings(c.env)).store_enabled)
     fail("Savollar do‘koni vaqtincha yopiq", 503);
   const d = await body(
@@ -1390,6 +1404,7 @@ teacher.post("/store/copy-bulk", async (c) => {
 });
 
 teacher.post("/market-cards/:slug/copy", async (c) => {
+  await requirePaidStoreAccess(c);
   const tid = c.get("principal").tenantId!;
   const slug = c.req.param("slug");
   const card = await first(
@@ -1485,6 +1500,7 @@ teacher.post("/market-cards/:slug/copy", async (c) => {
 });
 
 teacher.post("/store/:id/copy", async (c) => {
+  await requirePaidStoreAccess(c);
   if (!(await settings(c.env)).store_enabled)
     fail("Savollar do‘koni vaqtincha yopiq", 503);
   const r = await first(

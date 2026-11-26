@@ -518,8 +518,8 @@ libraryTeacher.post("/", async (c) => {
     d.tags,
     author,
     d.linked_card_slug,
-    d.published ? 1 : 0,
-    p.scope === "owner" ? "approved" : d.published ? "pending" : "draft",
+    1,
+    p.scope === "owner" ? "approved" : "pending",
     t,
     t,
   ).run();
@@ -756,7 +756,7 @@ libraryTeacher.post("/import-docx", async (c) => {
   const d = await body(c, importDocxSchema);
   const bid = id();
   const ts = now();
-  const modStatus = d.published ? "pending" : "pending";
+  const modStatus = c.get("principal").scope === "owner" ? "approved" : "pending";
   const batches = [
     stmt(
       c.env.DB,
@@ -769,7 +769,7 @@ libraryTeacher.post("/import-docx", async (c) => {
       d.tags,
       d.author_name,
       d.linked_card_slug,
-      d.published ? 1 : 0,
+      1,
       modStatus,
       ts,
       ts,
@@ -817,7 +817,7 @@ libraryTeacher.post("/import-pdf", async (c) => {
   const tags = String(form?.get("tags") || "").trim().slice(0, 240);
   const authorName = String(form?.get("author_name") || "").trim().slice(0, 120);
   const linkedSlug = String(form?.get("linked_card_slug") || "").trim().slice(0, 80);
-  const published = String(form?.get("published") || "true") !== "false";
+  const published = true;
 
   if (title.length < 2) fail("Kitob nomini kiriting", 400);
 

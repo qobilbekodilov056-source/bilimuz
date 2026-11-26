@@ -379,5 +379,24 @@ imports.post("/:id/commit", async (c) => {
     job.id,
   );
   if (result?.status !== "committed") fail("Import muddati tugadi", 409);
+  if (c.get("principal").scope === "teacher") {
+    try {
+      const tRow = await first(c.env.DB, "SELECT name FROM tenants WHERE id=?", tid);
+      const attr = String(tRow?.name || "");
+      for (const chunk of chunks(data)) {
+        await stmt(
+          c.env.DB,
+          `INSERT OR IGNORE INTO store_submissions(id,tenant_id,question_id,source_version,content_json,fingerprint,consent_at,license,attribution)
+           SELECT lower(hex(randomblob(12))), q.tenant_id, q.id, q.content_version, q.content_json, q.fingerprint, ?, 'CC-BY-4.0', ?
+           FROM questions q
+           WHERE q.tenant_id=? AND q.id IN (SELECT json_extract(value,'$.id') FROM json_each(?))`,
+          t,
+          attr,
+          tid,
+          json(chunk),
+        ).run();
+      }
+    } catch {}
+  }
   return c.json(JSON.parse(result.result_json));
 });

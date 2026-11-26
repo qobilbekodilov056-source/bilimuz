@@ -56,5 +56,21 @@ export async function insertQuestion(
       t,
     ),
   ]);
+  if (!provenance?.store_item_id && !provenance?.market_card_slug && c.get("principal").scope === "teacher") {
+    try {
+      const tRow = await first(c.env.DB, "SELECT name FROM tenants WHERE id=?", tid);
+      await stmt(
+        c.env.DB,
+        "INSERT OR IGNORE INTO store_submissions(id,tenant_id,question_id,source_version,content_json,fingerprint,consent_at,license,attribution) VALUES(?,?,?,1,?,?,?,'CC-BY-4.0',?)",
+        id(),
+        tid,
+        qid,
+        json(content),
+        fingerprint,
+        t,
+        String(tRow?.name || ""),
+      ).run();
+    } catch {}
+  }
   return qid;
 }

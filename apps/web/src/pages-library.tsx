@@ -966,14 +966,6 @@ export function LibraryStudio() {
                 />
               </Field>
             </div>
-            <label className="check-field">
-              <input
-                type="checkbox"
-                checked={editBook.published !== false}
-                onChange={(e) => setEditBook({ ...editBook, published: e.target.checked })}
-              />
-              <span>Ochiq kutubxonada (/library) barcha uchun ko‘rinsin</span>
-            </label>
             <div className="actions" style={{ marginTop: 14 }}>
               <button className="btn primary" disabled={busy}>
                 {busy ? "Saqlanmoqda…" : "Saqlash"}
@@ -1337,10 +1329,6 @@ function ImportBookModal({
             <input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="excel, informatika" maxLength={240} />
           </Field>
         </div>
-        <label className="mod-check-inline" style={{ marginBottom: 14 }}>
-          <input type="checkbox" checked={published} onChange={(e) => setPublished(e.target.checked)} />
-          <span>Ommaviy kutubxonaga yuborish (Owner tasdiqlagach chiqadi)</span>
-        </label>
         <button className="btn primary full" disabled={busy || parsing || !file}>
           {busy ? "Yuklanmoqda…" : isPdf ? "PDF kitobni saqlash" : "Boblarni kitob qilib saqlash"}
         </button>
