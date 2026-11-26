@@ -284,7 +284,7 @@ auth.post("/register", async (c) => {
   const d = await body(c, registrationSchema);
   if (c.env.REGISTRATION_OPEN !== "true")
     fail("Ro‘yxatdan o‘tish hozircha yopiq", 503);
-  await turnstile(c, d.turnstile_token, "register");
+  await turnstile(c, d.turnstile_token, ["register", "login"]);
   if (!c.env.PASSWORD_PEPPER)
     fail("Parol xizmati sozlanmagan", 503);
   if (await first(c.env.DB, "SELECT id FROM users WHERE email=?", d.email))
@@ -426,7 +426,7 @@ auth.post("/login", async (c) => {
       .strict(),
   );
   await rate(c, "login-account", 10, 300, d.email);
-  await turnstile(c, d.turnstile_token, "login");
+  await turnstile(c, d.turnstile_token, ["login", "register"]);
   const u = await first(c.env.DB, "SELECT * FROM users WHERE email=?", d.email);
   const valid = await passwordVerify(
     d.password,

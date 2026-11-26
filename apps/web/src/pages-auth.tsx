@@ -98,6 +98,12 @@ export function AuthPage({
     [consent, setConsent] = useState(false),
     [phone, setPhone] = useState(false),
     [action, setAction] = useState(mode === "owner" ? "owner" : mode);
+  useEffect(() => {
+    setAction(mode === "owner" ? "owner" : mode);
+    setRoleChosen(false);
+    setError(null);
+    setMessage("");
+  }, [mode]);
   const form = useRef<HTMLFormElement>(null);
   const navigate = useNavigate();
   const title = {
