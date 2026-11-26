@@ -619,6 +619,64 @@ owner.post("/paid-tests/:cardId/pricing", async (c) => {
   return c.json({ ok: true, price_uzs: d.price_uzs });
 });
 
+
+owner.get("/promo-codes", async (c) => {
+  const items = await rows(
+    c.env.DB,
+    "SELECT * FROM content_promo_codes ORDER BY created_at DESC LIMIT 200",
+  );
+  return c.json({ items });
+});
+
+owner.post("/promo-codes", async (c) => {
+  const d = await body(
+    c,
+    z.object({
+      code: z.string().trim().min(3).max(32),
+      target_type: z.enum(["all", "book", "test"]).default("all"),
+      target_id: z.string().trim().max(80).optional().default(""),
+      discount_percent: z.coerce.number().int().min(0).max(100).default(100),
+      discount_uzs: z.coerce.number().int().min(0).max(5000000).default(0),
+      max_uses: z.coerce.number().int().min(1).max(100000).default(50),
+      expires_days: z.coerce.number().int().min(0).max(3650).default(0),
+    }).strict(),
+  );
+  const code = d.code.toUpperCase().replace(/[^A-Z0-9_-]/g, "");
+  if (code.length < 3) fail("Promokod faqat harf va raqamlardan iborat bo‘lsin (kamida 3 belgi)", 400);
+  const ts = now();
+  const expiresAt = d.expires_days > 0 ? ts + d.expires_days * 86400 : 0;
+  const pid = id();
+  await stmt(
+    c.env.DB,
+    `INSERT INTO content_promo_codes(id, code, target_type, target_id, discount_percent, discount_uzs, max_uses, used_count, expires_at, status, created_at)
+     VALUES(?,?,?,?,?,?,?,0,?,'active',?)`,
+    pid,
+    code,
+    d.target_type,
+    d.target_id,
+    d.discount_percent,
+    d.discount_uzs,
+    d.max_uses,
+    expiresAt,
+    ts,
+  ).run();
+  return c.json({ ok: true, id: pid, code }, 201);
+});
+
+owner.post("/promo-codes/:pid/toggle", async (c) => {
+  const pid = c.req.param("pid");
+  const cur: any = await first(c.env.DB, "SELECT status FROM content_promo_codes WHERE id=?", pid);
+  if (!cur) fail("Promokod topilmadi", 404);
+  const next = cur.status === "active" ? "disabled" : "active";
+  await stmt(c.env.DB, "UPDATE content_promo_codes SET status=? WHERE id=?", next, pid).run();
+  return c.json({ ok: true, status: next });
+});
+
+owner.delete("/promo-codes/:pid", async (c) => {
+  await stmt(c.env.DB, "DELETE FROM content_promo_codes WHERE id=?", c.req.param("pid")).run();
+  return c.json({ ok: true });
+});
+
 owner.post("/test-orders/:oid/decision", async (c) => {
   const oid = c.req.param("oid");
   const d = await body(c, z.object({ status: z.enum(["paid", "rejected"]) }).strict());

@@ -406,8 +406,16 @@ export function LibraryBookReader() {
         data: {
           buyer_name: String(fd.get("buyer_name") || ""),
           buyer_phone: String(fd.get("buyer_phone") || ""),
+          promo_code: String(fd.get("promo_code") || ""),
         },
       });
+      if (res?.paid && res?.unlock_token) {
+        localStorage.setItem("bilimuz_book_unlock_" + id, res.unlock_token);
+        toast("🎉 Promokod qabul qilindi! Kitob bepul ochildi!");
+        setBuyModal(false);
+        data.reload();
+        return;
+      }
       setBuyOrder(res);
     } catch (err: any) {
       toast(err?.message || "Buyurtma yaratishda xatolik");
@@ -639,6 +647,9 @@ export function LibraryBookReader() {
                         </Field>
                         <Field label="Telefon raqam (ixtiyoriy)">
                           <input name="buyer_phone" placeholder="+998 90 123 45 67" />
+                        </Field>
+                        <Field label="Promokod (bo‘lsa — chegirma yoki bepul)">
+                          <input name="promo_code" placeholder="Masalan: BILIM50" style={{ textTransform: "uppercase" }} />
                         </Field>
                         <button type="submit" className="btn primary" disabled={buyBusy}>
                           {buyBusy ? "Tayyorlanmoqda..." : "To‘lov rekvizitini olish"}

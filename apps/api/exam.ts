@@ -809,17 +809,77 @@ exam.post("/practice/:slug/buy", async (c) => {
     z.object({
       buyer_name: z.string().trim().min(2).max(120),
       buyer_phone: z.string().trim().max(40).optional().default(""),
+      promo_code: z.string().trim().max(40).optional().default(""),
     }).strict(),
   );
 
   const ts = now();
-  let uniqueAmount = price + 101 + Math.floor(Math.random() * 880);
+  let finalPrice = price;
+  let promoApplied = "";
+  const rawPromo = String(d.promo_code || "").trim().toUpperCase();
+  if (rawPromo) {
+    const pr: any = await first(
+      c.env.DB,
+      "SELECT * FROM content_promo_codes WHERE UPPER(code)=? AND status='active' LIMIT 1",
+      rawPromo,
+    );
+    if (!pr) fail("Promokod topilmadi yoki faol emas", 400);
+    if (pr.expires_at > 0 && Number(pr.expires_at) < ts) fail("Promokod muddati tugagan", 400);
+    if (Number(pr.used_count) >= Number(pr.max_uses)) fail("Promokod limiti tugagan", 400);
+    if (pr.target_type === "book") fail("Bu promokod faqat kitoblar uchun", 400);
+    if (pr.target_id && pr.target_id.toUpperCase() !== String(card.slug).toUpperCase() && pr.target_id !== card.id) {
+      fail("Bu promokod boshqa test uchun belgilangan", 400);
+    }
+    if (Number(pr.discount_percent) >= 100) {
+      finalPrice = 0;
+    } else if (Number(pr.discount_percent) > 0) {
+      finalPrice = Math.max(0, Math.round((price * (100 - Number(pr.discount_percent))) / 100));
+    } else if (Number(pr.discount_uzs) > 0) {
+      finalPrice = Math.max(0, price - Number(pr.discount_uzs));
+    }
+    promoApplied = String(pr.code);
+    await stmt(c.env.DB, "UPDATE content_promo_codes SET used_count=used_count+1 WHERE id=?", pr.id).run();
+  }
+
+  if (finalPrice <= 0) {
+    const oid = id();
+    const unlockToken = id() + id();
+    await stmt(
+      c.env.DB,
+      `INSERT INTO test_card_orders(id, card_id, card_slug, user_id, buyer_name, buyer_phone, amount, unique_amount, status, unlock_token, tx_note, created_at, expires_at, paid_at)
+       VALUES(?,?,?,?,?,?,0,0,'paid',?,?,?, ?, ?)`,
+      oid,
+      card.id,
+      card.slug,
+      principal.userId,
+      d.buyer_name,
+      d.buyer_phone,
+      unlockToken,
+      "Promokod: " + promoApplied,
+      ts,
+      ts,
+      ts,
+    ).run();
+    return c.json({
+      order_id: oid,
+      card_slug: card.slug,
+      card_title: card.title,
+      paid: true,
+      free_unlock: true,
+      promo_code: promoApplied,
+      unlock_token: unlockToken,
+      amount: 0,
+      unique_amount: 0,
+    }, 201);
+  }
+
+  let uniqueAmount = finalPrice + 101 + Math.floor(Math.random() * 880);
   for (let i = 0; i < 8; i++) {
     const c1 = await first(c.env.DB, "SELECT id FROM billing_orders WHERE status='pending' AND unique_amount=? AND expires_at>=?", uniqueAmount, ts);
     const c2 = await first(c.env.DB, "SELECT id FROM library_book_orders WHERE status='pending' AND unique_amount=? AND expires_at>=?", uniqueAmount, ts);
     const c3 = await first(c.env.DB, "SELECT id FROM test_card_orders WHERE status='pending' AND unique_amount=? AND expires_at>=?", uniqueAmount, ts);
     if (!c1 && !c2 && !c3) break;
-    uniqueAmount = price + 101 + Math.floor(Math.random() * 880);
+    uniqueAmount = finalPrice + 101 + Math.floor(Math.random() * 880);
   }
 
   const oid = id();
@@ -852,7 +912,9 @@ exam.post("/practice/:slug/buy", async (c) => {
     order_id: oid,
     card_slug: card.slug,
     card_title: card.title,
-    amount: price,
+    amount: finalPrice,
+    original_amount: price,
+    promo_code: promoApplied,
     unique_amount: uniqueAmount,
     unlock_token: unlockToken,
     expires_at: expiresAt,

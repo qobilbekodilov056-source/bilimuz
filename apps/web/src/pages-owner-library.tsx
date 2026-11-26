@@ -25,8 +25,10 @@ async function compressCoverToWebp(file: File): Promise<File> {
 export function OwnerLibraryManager() {
   const data = useData("/api/v2/owner/library-catalog");
   const testsData = useData("/api/v2/owner/paid-tests");
+  const promoData = useData("/api/v2/owner/promo-codes");
+  const [promoModal, setPromoModal] = useState(false);
   const toast = useToast();
-  const [tab, setTab] = useState<"books" | "orders" | "tests" | "test_orders">("books");
+  const [tab, setTab] = useState<"books" | "orders" | "tests" | "test_orders" | "promos">("books");
   const [createOpen, setCreateOpen] = useState(false);
   const [chapterBook, setChapterBook] = useState<any>(null);
   const [busy, setBusy] = useState("");
@@ -36,6 +38,7 @@ export function OwnerLibraryManager() {
   const orders: any[] = data.data?.orders || [];
   const paidCards: any[] = testsData.data?.cards || [];
   const testOrders: any[] = testsData.data?.orders || [];
+  const promos: any[] = promoData.data?.items || [];
 
   async function onCreateBook(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -189,6 +192,60 @@ export function OwnerLibraryManager() {
     }
   }
 
+
+  async function onCreatePromo(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setBusy("promo-create");
+    try {
+      const fd = new FormData(e.currentTarget);
+      await api("/api/v2/owner/promo-codes", {
+        method: "POST",
+        data: {
+          code: String(fd.get("code") || ""),
+          target_type: String(fd.get("target_type") || "all"),
+          target_id: String(fd.get("target_id") || ""),
+          discount_percent: Number(fd.get("discount_percent") || 0),
+          discount_uzs: Number(fd.get("discount_uzs") || 0),
+          max_uses: Number(fd.get("max_uses") || 50),
+          expires_days: Number(fd.get("expires_days") || 0),
+        },
+      });
+      toast("Promokod yaratildi!");
+      setPromoModal(false);
+      promoData.reload();
+    } catch (err: any) {
+      toast(err?.message || "Promokod yaratishda xatolik");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function togglePromo(pid: string) {
+    setBusy("ptog-" + pid);
+    try {
+      await api("/api/v2/owner/promo-codes/" + encodeURIComponent(pid) + "/toggle", { method: "POST", data: {} });
+      promoData.reload();
+    } catch (err: any) {
+      toast(err?.message || "Xatolik");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function deletePromo(pid: string) {
+    if (!confirm("Promokodni o‘chirasizmi?")) return;
+    setBusy("pdel-" + pid);
+    try {
+      await api("/api/v2/owner/promo-codes/" + encodeURIComponent(pid), { method: "DELETE" });
+      toast("Promokod o‘chirildi");
+      promoData.reload();
+    } catch (err: any) {
+      toast(err?.message || "Xatolik");
+    } finally {
+      setBusy("");
+    }
+  }
+
   return (
     <>
       <PageTitle
@@ -214,6 +271,9 @@ export function OwnerLibraryManager() {
         </button>
         <button type="button" className={tab === "test_orders" ? "btn primary tiny" : "btn secondary tiny"} onClick={() => setTab("test_orders")}>
           💳 Test xaridlari ({testOrders.length})
+        </button>
+        <button type="button" className={tab === "promos" ? "btn primary tiny" : "btn secondary tiny"} onClick={() => setTab("promos")}>
+          🎟️ Promokodlar ({promos.length})
         </button>
       </div>
 
@@ -329,6 +389,68 @@ export function OwnerLibraryManager() {
             </table>
           </div>
         )
+      ) : tab === "promos" ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <button type="button" className="btn primary tiny" onClick={() => setPromoModal(true)}>
+              <Plus size={14} /> Yangi promokod yaratish
+            </button>
+          </div>
+          {!promos.length ? (
+            <div className="panel"><Empty title="Hali promokodlar yo‘q" text="Kitoblar va testlar uchun skidka (masalan 50%) yoki 100% bepul promokod yarating." /></div>
+          ) : (
+            <div className="panel" style={{ overflowX: "auto" }}>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Promokod</th>
+                    <th>Qayerda ishlaydi</th>
+                    <th>Chegirma</th>
+                    <th>Ishlatilgan</th>
+                    <th>Holat</th>
+                    <th>Amal</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {promos.map((pr: any) => (
+                    <tr key={pr.id}>
+                      <td><strong>{pr.code}</strong></td>
+                      <td>
+                        {pr.target_type === "book" ? "Faqat kitoblar" : pr.target_type === "test" ? "Faqat testlar" : "Kitob va Testlar"}
+                        {pr.target_id ? ` (${pr.target_id})` : ""}
+                      </td>
+                      <td>
+                        <Pill tone={Number(pr.discount_percent) >= 100 ? "green" : "amber"}>
+                          {Number(pr.discount_percent) >= 100
+                            ? "100% BEPUL"
+                            : Number(pr.discount_percent) > 0
+                              ? `-${pr.discount_percent}%`
+                              : `-${Number(pr.discount_uzs).toLocaleString("uz-UZ")} so‘m`}
+                        </Pill>
+                      </td>
+                      <td>{pr.used_count} / {pr.max_uses}</td>
+                      <td>
+                        <Pill tone={pr.status === "active" ? "green" : "red"}>
+                          {pr.status === "active" ? "Faol" : "O‘chiq"}
+                        </Pill>
+                      </td>
+                      <td>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <button type="button" className="btn secondary tiny" disabled={busy === "ptog-" + pr.id} onClick={() => togglePromo(pr.id)}>
+                            {pr.status === "active" ? "O‘chirish" : "Yoqish"}
+                          </button>
+                          <button type="button" className="btn secondary tiny" disabled={busy === "pdel-" + pr.id} onClick={() => deletePromo(pr.id)}>
+                            O‘chirish ×
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       ) : !orders.length ? (
         <div className="panel"><Empty title="Hali kitob xaridlari yo‘q" text="Pullik kitoblarga buyurtmalar tushishi bilan shu yerda ko‘rinadi." /></div>
       ) : (
@@ -422,6 +544,47 @@ export function OwnerLibraryManager() {
             </Field>
             <button type="submit" className="btn primary" disabled={busy === "chapter"}>
               {busy === "chapter" ? "Saqlanmoqda..." : "Bobni saqlash"}
+            </button>
+          </form>
+        </Modal>
+      )}
+
+      {promoModal && (
+        <Modal title="Yangi promokod (Kitob va Testlar)" close={() => setPromoModal(false)}>
+          <form onSubmit={onCreatePromo} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <Field label="Promokod nomi (masalan: IELTS50 yoki FREEVIP)">
+              <input name="code" required placeholder="BILIM50" style={{ textTransform: "uppercase" }} />
+            </Field>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <Field label="Qaysi bo‘lim uchun">
+                <select name="target_type" defaultValue="all">
+                  <option value="all">Kitoblar va Testlar</option>
+                  <option value="book">Faqat Kitoblar</option>
+                  <option value="test">Faqat Testlar</option>
+                </select>
+              </Field>
+              <Field label="Aniq kitob ID / test kodi (ixtiyoriy)">
+                <input name="target_id" placeholder="Bo‘sh = hammasi" />
+              </Field>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <Field label="Foiz chegirma (0–100%, 100 = BEPUL)">
+                <input name="discount_percent" type="number" min={0} max={100} defaultValue={100} />
+              </Field>
+              <Field label="Yoki aniq so‘m chegirma (0 bo‘lsa foiz ishlaydi)">
+                <input name="discount_uzs" type="number" min={0} step={1000} defaultValue={0} />
+              </Field>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <Field label="Necha kishi ishlata oladi">
+                <input name="max_uses" type="number" min={1} defaultValue={50} />
+              </Field>
+              <Field label="Amal qilish muddati (kun, 0 = cheksiz)">
+                <input name="expires_days" type="number" min={0} defaultValue={30} />
+              </Field>
+            </div>
+            <button type="submit" className="btn primary" disabled={busy === "promo-create"}>
+              {busy === "promo-create" ? "Yaratilmoqda..." : "Promokodni yaratish"}
             </button>
           </form>
         </Modal>

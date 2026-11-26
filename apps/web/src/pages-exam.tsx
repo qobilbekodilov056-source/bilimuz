@@ -1596,8 +1596,14 @@ export function PracticeExam() {
         data: {
           buyer_name: String(fd.get("buyer_name") || ""),
           buyer_phone: String(fd.get("buyer_phone") || ""),
+          promo_code: String(fd.get("promo_code") || ""),
         },
       });
+      if (res?.paid && res?.unlock_token) {
+        localStorage.setItem("bilimuz_test_unlock_" + slug, res.unlock_token);
+        pack.reload();
+        return;
+      }
       setTestOrder(res);
     } catch (err) {
       setError(err);
@@ -1741,6 +1747,10 @@ export function PracticeExam() {
               <label>
                 Telefon raqam (ixtiyoriy)
                 <input name="buyer_phone" placeholder="+998 90 123 45 67" />
+              </label>
+              <label>
+                Promokod (bo‘lsa — chegirma yoki bepul)
+                <input name="promo_code" placeholder="Masalan: IELTS50" style={{ textTransform: "uppercase" }} />
               </label>
               <button type="submit" className="btn primary full" disabled={buyBusy}>
                 {buyBusy ? "Tayyorlanmoqda..." : `Alohida sotib olish — ${Number(card.price_uzs || 0).toLocaleString("uz-UZ")} so‘m`}
