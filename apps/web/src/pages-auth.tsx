@@ -83,7 +83,7 @@ export function AuthPage({
     const u = me.data?.user;
     if (!u) return;
     if (mode === "login" || mode === "register") {
-      navAuto(u.scope === "owner" ? "/owner" : "/studio", { replace: true });
+      navAuto(u.scope === "owner" ? "/owner" : u.account_type === "learner" ? "/learner" : "/studio", { replace: true });
     } else if (mode === "owner" && u.scope === "owner") {
       navAuto("/owner", { replace: true });
     }
@@ -93,6 +93,7 @@ export function AuthPage({
     [busy, setBusy] = useState(false),
     [challenge, setChallenge] = useState(""),
     [version, setVersion] = useState(0),
+    [accountType, setAccountType] = useState<"teacher" | "learner">("learner"),
     [consent, setConsent] = useState(false),
     [phone, setPhone] = useState(false),
     [action, setAction] = useState(mode === "owner" ? "owner" : mode);
@@ -117,7 +118,8 @@ export function AuthPage({
               email: data.email,
               password: data.password,
               display_name: data.display_name,
-              workplace: data.workplace,
+              workplace: data.workplace || "",
+              account_type: accountType,
               consent,
               turnstile_token: challenge,
             }
@@ -133,9 +135,13 @@ export function AuthPage({
         method: "POST",
         data: payload,
       });
-      if (mode === "login" || mode === "owner")
-        navigate(mode === "owner" ? "/owner" : "/studio");
-      else setMessage(result.message);
+      if (mode === "owner") {
+        navigate("/owner");
+      } else if (mode === "login" || result?.auto_logged_in) {
+        navigate(result?.account_type === "learner" ? "/learner" : "/studio");
+      } else {
+        setMessage(result.message);
+      }
     } catch (e) {
       setError(e);
     } finally {
@@ -189,7 +195,7 @@ export function AuthPage({
     action !== "telegram" &&
     action !== "resend" &&
     (mode !== "register" || consent) &&
-    (mode === "owner" || mode === "login" || cfg.email_enabled) &&
+    (mode !== "forgot" || cfg.email_enabled) &&
     (mode !== "register" || cfg.registration_open);
   return (
     <div className="auth-page">
@@ -240,6 +246,40 @@ export function AuthPage({
         )}
         {!!error && <ErrorBox error={error} />}
         <form ref={form} onSubmit={submit}>
+          {mode === "register" && (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
+              <button
+                type="button"
+                onClick={() => setAccountType("learner")}
+                style={{
+                  textAlign: "left",
+                  padding: "12px 14px",
+                  borderRadius: 14,
+                  border: accountType === "learner" ? "2px solid #0c8066" : "1.5px solid #d5e0e5",
+                  background: accountType === "learner" ? "#ecfdf5" : "#fff",
+                  cursor: "pointer",
+                }}
+              >
+                <div style={{ fontWeight: 700, fontSize: 14, color: "#11191e" }}>🎓 O‘quvchi / Abituriyent</div>
+                <div style={{ fontSize: 12, color: "#475569", marginTop: 3 }}>Testlar, IELTS/DTM va kutubxona</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setAccountType("teacher")}
+                style={{
+                  textAlign: "left",
+                  padding: "12px 14px",
+                  borderRadius: 14,
+                  border: accountType === "teacher" ? "2px solid #0c8066" : "1.5px solid #d5e0e5",
+                  background: accountType === "teacher" ? "#ecfdf5" : "#fff",
+                  cursor: "pointer",
+                }}
+              >
+                <div style={{ fontWeight: 700, fontSize: 14, color: "#11191e" }}>👨‍🏫 O‘qituvchi / Markaz</div>
+                <div style={{ fontSize: 12, color: "#475569", marginTop: 3 }}>Workspace, guruhlar va jurnal</div>
+              </button>
+            </div>
+          )}
           {mode === "register" && (
             <>
               <Field label="Ism va familiya">
@@ -346,7 +386,9 @@ export function AuthPage({
               {busy
                 ? "Kutilmoqda…"
                 : mode === "register"
-                  ? "Workspace yaratish"
+                  ? accountType === "learner"
+                    ? "Abituriyent kabinetini ochish"
+                    : "Workspace yaratish"
                   : mode === "forgot"
                     ? "Tiklash havolasini yuborish"
                     : "Hisobga kirish"}

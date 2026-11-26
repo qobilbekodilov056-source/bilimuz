@@ -1,3 +1,5 @@
+import { rows } from "./core";
+import { getEffectivePlan } from "./billing";
 import { Hono } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { createRemoteJWKSet, jwtVerify } from "jose";
@@ -282,15 +284,13 @@ auth.post("/register", async (c) => {
   if (c.env.REGISTRATION_OPEN !== "true")
     fail("Ro‘yxatdan o‘tish hozircha yopiq", 503);
   await turnstile(c, d.turnstile_token, "register");
-  if (!c.env.RESEND_API_KEY || !c.env.EMAIL_FROM || !c.env.PASSWORD_PEPPER)
-    fail("Email kirish xizmati sozlanmagan", 503);
+  if (!c.env.PASSWORD_PEPPER)
+    fail("Parol xizmati sozlanmagan", 503);
   if (await first(c.env.DB, "SELECT id FROM users WHERE email=?", d.email))
-    return c.json(
-      { message: "Emailni tekshiring yoki parolni tiklashdan foydalaning." },
-      202,
-    );
+    fail("Bu email allaqachon ro‘yxatdan o‘tgan. Tizimga kiring yoki parolni tiklang.", 409);
   const uid = id(),
     raw = token();
+  const hasEmailSender = Boolean(c.env.RESEND_API_KEY && c.env.EMAIL_FROM);
   const { statements } = newTeacherStatements(c, {
     id: uid,
     email: d.email,
@@ -305,20 +305,44 @@ auth.post("/register", async (c) => {
   statements.push(
     stmt(
       c.env.DB,
-      "INSERT INTO auth_tokens VALUES(?,?,?,?,?)",
-      await digest(raw),
+      "UPDATE users SET account_type=?, email_verified=? WHERE id=?",
+      d.account_type || "teacher",
+      hasEmailSender ? 0 : 1,
       uid,
-      "verify",
-      now() + 1800,
-      now(),
     ),
   );
+  if (hasEmailSender) {
+    statements.push(
+      stmt(
+        c.env.DB,
+        "INSERT INTO auth_tokens VALUES(?,?,?,?,?)",
+        await digest(raw),
+        uid,
+        "verify",
+        now() + 1800,
+        now(),
+      ),
+    );
+    await c.env.DB.batch(statements);
+    await sendAuthEmail(c, d.email, raw, "verify");
+    await authAudit(c, "registered", uid);
+    return c.json(
+      { message: "Emailingizga tasdiqlash havolasi yuborildi.", account_type: d.account_type },
+      202,
+    );
+  }
   await c.env.DB.batch(statements);
-  await sendAuthEmail(c, d.email, raw, "verify");
-  await authAudit(c, "registered", uid);
+  const csrfToken = await session(c, uid, "teacher");
+  await authAudit(c, "registered_instant", uid);
   return c.json(
-    { message: "Emailingizga tasdiqlash havolasi yuborildi." },
-    202,
+    {
+      ok: true,
+      auto_logged_in: true,
+      account_type: d.account_type || "teacher",
+      csrf: csrfToken,
+      message: "Muvaffaqiyatli ro‘yxatdan o‘tdingiz!",
+    },
+    201,
   );
 });
 auth.post("/verify", async (c) => {
@@ -416,7 +440,7 @@ auth.post("/login", async (c) => {
   if (!u.email_verified) fail("Avval emailingizni tasdiqlang", 403);
   const csrf = await session(c, u.id, "teacher");
   await authAudit(c, "login", u.id);
-  return c.json({ ok: true, csrf });
+  return c.json({ ok: true, csrf, account_type: u.account_type || "teacher" });
 });
 auth.post("/forgot", async (c) => {
   await rate(c, "forgot", 3, 3600);
@@ -695,7 +719,7 @@ auth.get("/me", async (c) => {
   const p = await authenticate(c);
   const u = await first(
     c.env.DB,
-    "SELECT display_name,email,email_verified,phone_verified,workplace FROM users WHERE id=?",
+    "SELECT display_name,email,email_verified,phone_verified,workplace,account_type FROM users WHERE id=?",
     p.userId,
   );
   const tenant = p.tenantId
@@ -711,6 +735,49 @@ auth.get("/me", async (c) => {
     csrf: getCookie(c, "testlab_csrf") || "",
   });
 });
+
+auth.get("/learner-hub", async (c) => {
+  const p = await authenticate(c);
+  const u: any = await first(
+    c.env.DB,
+    "SELECT id, display_name, email, workplace, account_type FROM users WHERE id=?",
+    p.userId,
+  );
+  const plan = p.tenantId ? await getEffectivePlan(c.env.DB, p.tenantId) : { id: "free", name: "Start (Bepul)", expires_at: 0 };
+  const paidBooks = await rows(
+    c.env.DB,
+    `SELECT DISTINCT b.id, b.title, b.subject, b.summary, b.cover_key, b.price_uzs, b.updated_at, o.paid_at
+     FROM library_book_orders o
+     JOIN library_books b ON b.id=o.book_id
+     WHERE o.user_id=? AND o.status='paid'
+     ORDER BY o.paid_at DESC LIMIT 50`,
+    p.userId,
+  );
+  const paidTests = await rows(
+    c.env.DB,
+    `SELECT DISTINCT c.id, c.slug, c.title, c.price_uzs, o.paid_at
+     FROM test_card_orders o
+     JOIN cards c ON c.id=o.card_id
+     WHERE o.user_id=? AND o.status='paid'
+     ORDER BY o.paid_at DESC LIMIT 50`,
+    p.userId,
+  );
+  return c.json({
+    user: { ...u, scope: p.scope, account_type: u?.account_type || "teacher" },
+    plan,
+    has_pro_access: p.scope === "owner" || plan.id !== "free",
+    paid_books: paidBooks,
+    paid_tests: paidTests,
+  });
+});
+
+auth.post("/account-type", async (c) => {
+  const p = await authenticate(c);
+  const d = await body(c, z.object({ account_type: z.enum(["teacher", "learner"]) }).strict());
+  await stmt(c.env.DB, "UPDATE users SET account_type=? WHERE id=?", d.account_type, p.userId).run();
+  return c.json({ ok: true, account_type: d.account_type });
+});
+
 auth.post("/logout", async (c) => {
   await authenticate(c);
   await csrf(c);

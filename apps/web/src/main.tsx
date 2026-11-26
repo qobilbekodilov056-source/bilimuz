@@ -60,6 +60,7 @@ import { LibraryCatalog, LibraryBookReader, LibraryStudio } from "./pages-librar
 import { GamesCatalogPage, GamePlayPage } from "./pages-games";
 import { StudentAssignmentsPage, TeacherAssignmentsPage } from "./pages-assignments";
 import { StudentCabinetPage } from "./pages-student-hub";
+import { LearnerCabinetPage } from "./pages-learner";
 import { LandingPage } from "./pages-landing";
 import { ChatPage } from "./pages-chat";
 import { TeacherBillingPage } from "./pages-billing";
@@ -668,6 +669,7 @@ function App() {
           <Route path="/parent" element={<FeatureGate enabled={cfg.parent_enabled} title="Ota-ona kabineti"><ParentPortal /></FeatureGate>} />
           <Route path="/parent/:code" element={<FeatureGate enabled={cfg.parent_enabled} title="Ota-ona kabineti"><ParentPortal /></FeatureGate>} />
           <Route path="/vazifalar" element={<FeatureGate enabled={cfg.assignments_enabled} title="Vazifalar"><StudentAssignmentsPage /></FeatureGate>} />
+          <Route path="/learner" element={<LearnerCabinetPage />} />
           <Route path="/student" element={<StudentCabinetPage />} />
           <Route path="/student/:code" element={<StudentCabinetPage />} />
           <Route path="/vazifalar/:code" element={<FeatureGate enabled={cfg.assignments_enabled} title="Vazifalar"><StudentAssignmentsPage /></FeatureGate>} />
