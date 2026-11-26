@@ -18,6 +18,8 @@ import {
 } from "./core";
 import { authenticate, csrf } from "./auth";
 import { questionSchema } from "../../packages/shared/schema";
+import { validateImport } from "./imports";
+import { parseCsv, parseXlsx, type Cell } from "./spreadsheet";
 import { createBackup } from "./backup";
 import { gamesOwner } from "./games";
 import { billingOwner } from "./billing";
@@ -324,6 +326,162 @@ owner.get("/store-items", async (c) => {
     })
     .filter((x: any) => x && (!q || JSON.stringify(x.question).toLowerCase().includes(q)));
   return c.json({ items: parsed, categories: cats.map((x: any) => x.cat) });
+});
+
+owner.post("/store-items/import", async (c) => {
+  const p = c.get("principal");
+  const form = await c.req.formData();
+  const file = form.get("file");
+  const mode = String(form.get("mode") || "preview");
+  if (!(file instanceof File)) fail("Excel (.xlsx) yoki CSV faylni tanlang");
+  if (file.size > 10 * 1024 * 1024) fail("Fayl 10 MB dan oshmasin", 413);
+  const ext = file.name.toLowerCase().split(".").pop();
+  if (ext !== "csv" && ext !== "xlsx") fail("Faqat XLSX yoki CSV fayllar qabul qilinadi");
+
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const isZip = bytes[0] === 0x50 && bytes[1] === 0x4b;
+  if ((ext === "xlsx" && !isZip) || (ext === "csv" && (isZip || bytes.includes(0)))) {
+    fail("Fayl tarkibi formatiga mos emas");
+  }
+
+  let cells: Cell[][];
+  if (ext === "xlsx") cells = parseXlsx(bytes);
+  else {
+    let text = "";
+    try {
+      text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bytes);
+    } catch {
+      fail("CSV fayl UTF-8 formatida bo‘lsin");
+    }
+    cells = parseCsv(text);
+  }
+
+  const preview = await validateImport(cells);
+  const fps = preview.filter((x) => x.fingerprint).map((x) => x.fingerprint!);
+  const hashes = new Set<string>();
+  for (let i = 0; i < fps.length; i += 200) {
+    const slice = fps.slice(i, i + 200);
+    const existing = await rows(
+      c.env.DB,
+      "SELECT fingerprint FROM store_items WHERE status='approved' AND fingerprint IN (SELECT value FROM json_each(?))",
+      json(slice),
+    );
+    for (const r of existing) hashes.add(String(r.fingerprint));
+  }
+
+  for (const r of preview) {
+    if (r.status === "valid" && r.fingerprint && hashes.has(r.fingerprint)) {
+      r.status = "duplicate";
+    }
+  }
+
+  const validRows = preview.filter((r) => r.status === "valid" && r.question && r.fingerprint);
+  const invalidRows = preview.filter((r) => r.status === "invalid");
+  const duplicateRows = preview.filter((r) => r.status === "duplicate");
+
+  if (mode !== "commit") {
+    return c.json({
+      summary: {
+        total: preview.length,
+        valid: validRows.length,
+        duplicate: duplicateRows.length,
+        invalid: invalidRows.length,
+      },
+      sample_errors: invalidRows.slice(0, 15).map((r) => ({
+        row: r.row,
+        errors: r.errors,
+      })),
+    });
+  }
+
+  if (!validRows.length) {
+    fail("Yuklash uchun yangi yaroqli savol topilmadi (barchasi mavjud yoki xato)", 400);
+  }
+
+  const t = now();
+  const tid = "tenant_bilimuz_official";
+  await stmt(
+    c.env.DB,
+    `INSERT OR IGNORE INTO tenants(id, owner_user_id, slug, name, status, quotas_json, created_at)
+     VALUES(?, ?, 'bilimuz-official', 'Bilim UZ Rasmiy Bazasi', 'active', '{"questions":50000,"students":50000}', ?)`,
+    tid,
+    p.userId,
+    t,
+  ).run();
+
+  let inserted = 0;
+  // Batch 15 questions (45 statements) per D1 batch to stay fast and safe
+  for (let i = 0; i < validRows.length; i += 15) {
+    const chunk = validRows.slice(i, i + 15);
+    const stmts: D1PreparedStatement[] = [];
+    for (const r of chunk) {
+      const q = r.question!;
+      const qJson = json(q);
+      const fp = r.fingerprint!;
+      const qid = "q_imp_" + id().slice(0, 12);
+      const subId = "sub_imp_" + id().slice(0, 12);
+      const itemId = "st_imp_" + id().slice(0, 12);
+      const pubContent = json({
+        question: q,
+        license: "CC-BY-4.0",
+        attribution: "Bilim UZ Rasmiy Bazasi",
+        source_version: 1,
+      });
+      stmts.push(
+        stmt(
+          c.env.DB,
+          "INSERT OR IGNORE INTO questions(id,tenant_id,title,category,topic,level,kind,content_json,fingerprint,provenance_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+          qid,
+          tid,
+          q.title,
+          q.category,
+          q.topic,
+          q.level,
+          q.kind,
+          qJson,
+          fp,
+          "{}",
+          t,
+          t,
+        ),
+        stmt(
+          c.env.DB,
+          "INSERT OR IGNORE INTO store_submissions(id,tenant_id,question_id,source_version,content_json,fingerprint,consent_at,license,attribution,moderation_status,reviewer_id,reviewed_at,reason) VALUES(?,?,?,1,?,?,?,'CC-BY-4.0','Bilim UZ Rasmiy Bazasi','approved',?,?,'Owner/Admin import')",
+          subId,
+          tid,
+          qid,
+          pubContent,
+          fp,
+          t,
+          p.userId,
+          t,
+        ),
+        stmt(
+          c.env.DB,
+          "INSERT OR IGNORE INTO store_items(id,submission_id,publication_version,public_content_json,category,level,fingerprint,status,published_at) VALUES(?,?,1,?,?,?,?,'approved',?)",
+          itemId,
+          subId,
+          pubContent,
+          q.category,
+          q.level,
+          fp,
+          t,
+        ),
+      );
+      inserted++;
+    }
+    await c.env.DB.batch(stmts);
+  }
+
+  return c.json(
+    {
+      ok: true,
+      inserted,
+      duplicate: duplicateRows.length,
+      invalid: invalidRows.length,
+    },
+    201,
+  );
 });
 
 owner.post("/store-items", async (c) => {

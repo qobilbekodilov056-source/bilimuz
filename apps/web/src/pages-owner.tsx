@@ -1796,6 +1796,9 @@ function OwnerStoreBank() {
   const [cat, setCat] = useState("");
   const [lvl, setLvl] = useState("");
   const [editing, setEditing] = useState<any>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importPreview, setImportPreview] = useState<any>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<unknown>(null);
   const toast = useToast();
@@ -1851,7 +1854,35 @@ function OwnerStoreBank() {
     }
   }
 
-  async function remove(itemId: string) {
+  async function runImport(mode: "preview" | "commit") {
+    if (!importFile) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", importFile);
+      fd.append("mode", mode);
+      const res = await api<any>(base + "/store-items/import", {
+        method: "POST",
+        data: fd,
+      });
+      if (mode === "preview") {
+        setImportPreview(res);
+      } else {
+        toast(`${res.inserted} ta savol umumiy bazaga yuklandi!${res.duplicate ? ` (${res.duplicate} ta takroriy o‘tkazib yuborildi)` : ""}`);
+        setImportOpen(false);
+        setImportFile(null);
+        setImportPreview(null);
+        list.reload();
+      }
+    } catch (e2) {
+      setErr(e2);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+    async function remove(itemId: string) {
     if (!confirm("Ushbu savolni umumiy bazadan o‘chirasizmi?")) return;
     setBusy(true);
     try {
@@ -1871,9 +1902,22 @@ function OwnerStoreBank() {
         title="Umumiy savollar bazasi"
         description="Tasdiqlangan barcha umumiy savollar. To‘g‘ridan-to‘g‘ri qo‘shing, tahrirlang yoki o‘chiring."
         actions={
-          <button
-            type="button"
-            className="btn primary"
+          <div className="actions">
+            <button
+              type="button"
+              className="btn secondary"
+              onClick={() => {
+                setImportOpen(true);
+                setImportFile(null);
+                setImportPreview(null);
+                setErr(null);
+              }}
+            >
+              <Upload size={16} /> Excel / CSV Import
+            </button>
+            <button
+              type="button"
+              className="btn primary"
             onClick={() =>
               setEditing({
                 question: {
@@ -1894,7 +1938,8 @@ function OwnerStoreBank() {
             }
           >
             <Plus size={16} /> Yangi savol qo‘shish
-          </button>
+            </button>
+          </div>
         }
       />
       {!!err && <ErrorBox error={err} />}
@@ -1958,7 +2003,68 @@ function OwnerStoreBank() {
         </div>
       )}
 
-      {editing && (
+      {importOpen && (
+        <Modal
+          title="Umumiy bazaga Excel / CSV import"
+          close={() => {
+            setImportOpen(false);
+            setImportPreview(null);
+          }}
+        >
+          <div className="form">
+            <p className="muted" style={{ marginTop: 0 }}>
+              Bilim UZ Excel (.xlsx) yoki CSV shablonidagi savollarni yuklang — barcha yaroqli savollar to‘g‘ridan-to‘g‘ri tasdiqlangan holda umumiy bazaga tushadi.
+            </p>
+            <Field label="Excel (.xlsx) yoki CSV fayl">
+              <input
+                type="file"
+                accept=".xlsx,.csv"
+                onChange={(e) => {
+                  setImportFile(e.target.files?.[0] || null);
+                  setImportPreview(null);
+                }}
+              />
+            </Field>
+            {importPreview?.summary && (
+              <div className="panel" style={{ background: "#f8fafc", padding: 12 }}>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+                  <Pill tone="neutral">Jami: {importPreview.summary.total}</Pill>
+                  <Pill tone="green">Yaroqli: {importPreview.summary.valid}</Pill>
+                  <Pill tone="amber">Takroriy: {importPreview.summary.duplicate}</Pill>
+                  {importPreview.summary.invalid > 0 && (
+                    <Pill tone="red">Xato: {importPreview.summary.invalid}</Pill>
+                  )}
+                </div>
+                {importPreview.sample_errors?.length > 0 && (
+                  <small className="muted" style={{ display: "block", color: "#b91c1c" }}>
+                    Xatolar: {importPreview.sample_errors.slice(0, 3).map((er: any) => `${er.row}-qator: ${er.errors?.[0]?.message || "xato"}`).join(" · ")}
+                  </small>
+                )}
+              </div>
+            )}
+            <div className="actions">
+              <button
+                type="button"
+                className="btn secondary"
+                disabled={busy || !importFile}
+                onClick={() => void runImport("preview")}
+              >
+                {busy ? "Tekshirilmoqda…" : "1. Tekshirish (Preview)"}
+              </button>
+              <button
+                type="button"
+                className="btn primary"
+                disabled={busy || !importFile || (importPreview && !importPreview.summary?.valid)}
+                onClick={() => void runImport("commit")}
+              >
+                {busy ? "Yuklanmoqda…" : "2. Umumiy bazaga yuklash"}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+            {editing && (
         <Modal title={editing.id ? "Savolni tahrirlash" : "Umumiy bazaga yangi savol"} close={() => setEditing(null)}>
           <form onSubmit={saveQuestion} className="form">
             <Field label="Savol matni">
