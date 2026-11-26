@@ -320,7 +320,7 @@ export function LibraryCatalog() {
             const hasPdf = Boolean(b.pdf_key || b.has_pdf);
             return (
               <article className="lib-pro-card" key={b.id}>
-                <Link to={href} className="lib-pro-cover" style={{ background: theme.bg }}>
+                <Link to={href} className="lib-pro-cover" style={b.cover_key ? { backgroundImage: `linear-gradient(180deg, rgba(12,24,34,0.38) 0%, rgba(12,24,34,0.88) 100%), url(/api/v2/library/cover/${encodeURIComponent(b.id)}?v=${b.updated_at || 1})`, backgroundSize: "cover", backgroundPosition: "center" } : { background: theme.bg }}>
                   <div className="lib-pro-spine" aria-hidden="true" />
                   <div className="lib-pro-cover-top">
                     <span className="lib-pro-subj" style={{ borderColor: theme.accent, color: theme.accent }}>
@@ -338,7 +338,7 @@ export function LibraryCatalog() {
                   </div>
                   <div className="lib-pro-cover-bot">
                     <span>{b.author_name || "Bilim UZ Kutubxonasi"}</span>
-                    <span className="lib-pro-code">{theme.code}</span>
+                    <span className="lib-pro-code" style={Number(b.price_uzs) > 0 ? { background: "#eab308", color: "#11191e" } : undefined}>{Number(b.price_uzs) > 0 ? `${Number(b.price_uzs).toLocaleString("uz-UZ")} so‘m` : "BEPUL"}</span>
                   </div>
                 </Link>
 
@@ -375,7 +375,46 @@ export function LibraryBookReader() {
   const [fontSize, setFontSize] = useState(16);
   const [copying, setCopying] = useState(false);
   const toast = useToast();
-  const data = useData("/api/v2/library/" + encodeURIComponent(id));
+  const savedTok = typeof localStorage !== "undefined" ? localStorage.getItem("bilimuz_book_unlock_" + id) || "" : "";
+  const [buyModal, setBuyModal] = useState(false);
+  const [buyOrder, setBuyOrder] = useState<any>(null);
+  const [buyBusy, setBuyBusy] = useState(false);
+  const data = useData("/api/v2/library/" + encodeURIComponent(id) + (savedTok ? "?token=" + encodeURIComponent(savedTok) : ""));
+  useEffect(() => {
+    if (!buyOrder || buyOrder.paid) return;
+    const t = setInterval(async () => {
+      try {
+        const st = await api("/api/v2/library/order/" + encodeURIComponent(buyOrder.order_id) + "/status");
+        if (st?.paid && st.unlock_token) {
+          localStorage.setItem("bilimuz_book_unlock_" + id, st.unlock_token);
+          setBuyOrder({ ...buyOrder, paid: true });
+          toast("To‘lov tasdiqlandi! Kitobning barcha boblari ochildi 🎉");
+          setBuyModal(false);
+          data.reload();
+        }
+      } catch {}
+    }, 5000);
+    return () => clearInterval(t);
+  }, [buyOrder, id]);
+  async function startBookBuy(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setBuyBusy(true);
+    try {
+      const fd = new FormData(e.currentTarget);
+      const res = await api("/api/v2/library/" + encodeURIComponent(id) + "/buy", {
+        method: "POST",
+        data: {
+          buyer_name: String(fd.get("buyer_name") || ""),
+          buyer_phone: String(fd.get("buyer_phone") || ""),
+        },
+      });
+      setBuyOrder(res);
+    } catch (err: any) {
+      toast(err?.message || "Buyurtma yaratishda xatolik");
+    } finally {
+      setBuyBusy(false);
+    }
+  }
   async function copyBookToStudio() {
     if (!book) return;
     setCopying(true);
@@ -557,7 +596,56 @@ export function LibraryBookReader() {
               {activeChapter.summary && (
                 <div className="lib-ch-summary">{activeChapter.summary}</div>
               )}
-              <div className="lib-prose">{renderBookBlocks(activeChapter.content)}</div>
+              <div className="lib-prose">{activeChapter.locked ? (
+                  <div className="panel" style={{ textAlign: "center", padding: "36px 20px", background: "#f8fafc", border: "1.5px dashed #0c8066" }}>
+                    <h3 style={{ margin: "0 0 8px" }}>🔒 Bu bob pullik qo‘llanma tarkibida</h3>
+                    <p className="muted" style={{ maxWidth: 440, margin: "0 auto 18px" }}>
+                      1-bob bepul tanishuv uchun ochiq. Barcha boblar va to‘liq materiallarni ochish uchun kitobni 1 marta sotib oling — 24/7 avtomatik ochiladi!
+                    </p>
+                    <button type="button" className="btn primary" onClick={() => setBuyModal(true)}>
+                      Kitobni sotib olish — {Number(book.price_uzs || 0).toLocaleString("uz-UZ")} so‘m
+                    </button>
+                  </div>
+                ) : (
+                  renderBookBlocks(activeChapter.content)
+                )}
+                {buyModal && (
+                  <Modal title={`Sotib olish: ${book.title}`} close={() => setBuyModal(false)}>
+                    {!buyOrder ? (
+                      <form onSubmit={startBookBuy} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                        <p className="muted" style={{ margin: 0 }}>
+                          Narx: <strong>{Number(book.price_uzs || 0).toLocaleString("uz-UZ")} so‘m</strong> (1 martalik to‘lov, doimiy kirish).
+                        </p>
+                        <Field label="Ism-familiyangiz">
+                          <input name="buyer_name" required placeholder="Masalan: Azizbek Karimov" />
+                        </Field>
+                        <Field label="Telefon raqam (ixtiyoriy)">
+                          <input name="buyer_phone" placeholder="+998 90 123 45 67" />
+                        </Field>
+                        <button type="submit" className="btn primary" disabled={buyBusy}>
+                          {buyBusy ? "Tayyorlanmoqda..." : "To‘lov rekvizitini olish"}
+                        </button>
+                      </form>
+                    ) : (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                        <div className="panel" style={{ background: "#ecfdf5", borderColor: "#10b981" }}>
+                          <small className="muted">ANIQ O‘TKAZILADIGAN SUMMA</small>
+                          <div style={{ fontSize: 26, fontWeight: 800, color: "#065744" }}>
+                            {Number(buyOrder.unique_amount).toLocaleString("uz-UZ")} so‘m
+                          </div>
+                          {buyOrder.card_number && (
+                            <p style={{ margin: "8px 0 0", fontSize: 14 }}>
+                              Karta: <strong>{buyOrder.card_number}</strong> ({buyOrder.card_holder || buyOrder.bank_name})
+                            </p>
+                          )}
+                        </div>
+                        <p className="muted" style={{ margin: 0, fontSize: 13.5 }}>
+                          Click / Payme / Uzum orqali aynan <strong>{Number(buyOrder.unique_amount).toLocaleString("uz-UZ")} so‘m</strong> o‘tkazing — tizim 5–15 soniyada avtomatik aniqlab kitobni ochadi!
+                        </p>
+                      </div>
+                    )}
+                  </Modal>
+                )}</div>
 
               <div className="lib-nav-footer">
                 {activeIdx > 0 ? (

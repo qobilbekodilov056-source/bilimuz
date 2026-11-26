@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "./types";
-import { body, fail, first, id, now, rows, stmt } from "./core";
+import { body, fail, first, id, now, rate, rows, stmt } from "./core";
 
 export const libraryPublic = new Hono<AppEnv>();
 export const libraryTeacher = new Hono<AppEnv>();
@@ -186,6 +186,106 @@ libraryPublic.get("/", async (c) => {
 });
 
 // Kitobni to'liq boblari bilan o'qish
+
+// Yengil WebP kitob muqovasini R2 dan uzatish (1 hafta kesh)
+libraryPublic.get("/cover/:id", async (c) => {
+  const b: any = await first(
+    c.env.DB,
+    "SELECT cover_key FROM library_books WHERE id=?",
+    c.req.param("id"),
+  );
+  if (!b?.cover_key) fail("Muqova topilmadi", 404);
+  const obj = await c.env.FILES.get(String(b.cover_key));
+  if (!obj) fail("Muqova fayli topilmadi", 404);
+  c.header("Content-Type", obj.httpMetadata?.contentType || "image/webp");
+  c.header("Cache-Control", "public, max-age=604800");
+  return c.body(obj.body as ReadableStream, 200);
+});
+
+// Pullik kitob uchun P2P buyurtma yaratish (unikal so'm qo'shimchasi bilan)
+libraryPublic.post("/:id/buy", async (c) => {
+  await rate(c, "book-buy", 30, 60);
+  const book: any = await first(
+    c.env.DB,
+    "SELECT id, title, price_uzs FROM library_books WHERE id=? AND published=1 AND moderation_status='approved'",
+    c.req.param("id"),
+  );
+  if (!book) fail("Kitob topilmadi", 404);
+  const price = Number(book.price_uzs || 0);
+  if (price <= 0) fail("Bu kitob bepul, sotib olish shart emas", 400);
+
+  const d = await body(
+    c,
+    z.object({
+      buyer_name: z.string().trim().min(2).max(120),
+      buyer_phone: z.string().trim().max(40).optional().default(""),
+    }).strict(),
+  );
+
+  const ts = now();
+  let uniqueAmount = price + 101 + Math.floor(Math.random() * 880);
+  for (let i = 0; i < 8; i++) {
+    const clash1 = await first(c.env.DB, "SELECT id FROM billing_orders WHERE status='pending' AND unique_amount=? AND expires_at>=?", uniqueAmount, ts);
+    const clash2 = await first(c.env.DB, "SELECT id FROM library_book_orders WHERE status='pending' AND unique_amount=? AND expires_at>=?", uniqueAmount, ts);
+    if (!clash1 && !clash2) break;
+    uniqueAmount = price + 101 + Math.floor(Math.random() * 880);
+  }
+
+  const oid = id();
+  const unlockToken = id() + id();
+  const expiresAt = ts + 30 * 60;
+  await stmt(
+    c.env.DB,
+    `INSERT INTO library_book_orders(id, book_id, buyer_name, buyer_phone, amount, unique_amount, status, unlock_token, tx_note, created_at, expires_at)
+     VALUES(?,?,?,?,?,?,'pending',?,'',?,?)`,
+    oid,
+    book.id,
+    d.buyer_name,
+    d.buyer_phone,
+    price,
+    uniqueAmount,
+    unlockToken,
+    ts,
+    expiresAt,
+  ).run();
+
+  const cfgRow: any = await first(c.env.DB, "SELECT value_json FROM system_settings WHERE key='billing_card'");
+  let card = { card_number: "", card_holder: "", bank_name: "" };
+  try {
+    if (cfgRow?.value_json) card = { ...card, ...JSON.parse(cfgRow.value_json) };
+  } catch {}
+
+  return c.json({
+    order_id: oid,
+    book_id: book.id,
+    book_title: book.title,
+    amount: price,
+    unique_amount: uniqueAmount,
+    unlock_token: unlockToken,
+    expires_at: expiresAt,
+    card_number: card.card_number,
+    card_holder: card.card_holder,
+    bank_name: card.bank_name,
+  }, 201);
+});
+
+// Buyurtma holatini tekshirish (avto-ochilish uchun)
+libraryPublic.get("/order/:orderId/status", async (c) => {
+  const o: any = await first(
+    c.env.DB,
+    "SELECT id, book_id, status, unlock_token, paid_at FROM library_book_orders WHERE id=?",
+    c.req.param("orderId"),
+  );
+  if (!o) fail("Buyurtma topilmadi", 404);
+  return c.json({
+    order_id: o.id,
+    book_id: o.book_id,
+    status: o.status,
+    paid: o.status === "paid",
+    unlock_token: o.status === "paid" ? o.unlock_token : "",
+  });
+});
+
 libraryPublic.get("/:id", async (c) => {
   const book = await first(
     c.env.DB,
@@ -216,13 +316,39 @@ libraryPublic.get("/:id", async (c) => {
     book.id,
   );
 
+  const priceUzs = Number(book.price_uzs || 0);
+  let unlocked = priceUzs <= 0;
+  const tok = String(c.req.query("token") || "").trim();
+  if (!unlocked && tok) {
+    const paidOrd = await first(
+      c.env.DB,
+      "SELECT id FROM library_book_orders WHERE book_id=? AND unlock_token=? AND status='paid' LIMIT 1",
+      book.id,
+      tok,
+    );
+    if (paidOrd) unlocked = true;
+  }
+  const safeChapters = chapters.map((ch: any, idx: number) => {
+    if (unlocked || idx === 0) return { ...ch, locked: false };
+    return {
+      id: ch.id,
+      position: ch.position,
+      title: ch.title,
+      summary: ch.summary || "",
+      content: "",
+      updated_at: ch.updated_at,
+      locked: true,
+    };
+  });
   return c.json({
     book: {
       ...book,
+      price_uzs: priceUzs,
+      unlocked,
       views_count: Number(book.views_count || 0) + 1,
       published: !!book.published,
     },
-    chapters,
+    chapters: safeChapters,
     related,
   });
 });
@@ -600,4 +726,22 @@ libraryTeacher.post("/import-pdf", async (c) => {
   ).run();
 
   return c.json({ ok: true, id: bid, pdf_key: key }, 201);
+});
+
+
+libraryTeacher.post("/:id/cover", async (c) => {
+  const tid = c.get("principal").tenantId!;
+  const bid = c.req.param("id");
+  const existing = await first(c.env.DB, "SELECT id FROM library_books WHERE id=? AND tenant_id=?", bid, tid);
+  if (!existing) fail("Kitob topilmadi", 404);
+  const fd = await c.req.formData();
+  const file = fd.get("file");
+  if (!(file instanceof File)) fail("Rasm fayli tanlanmadi", 400);
+  if (file.size > 350 * 1024) fail("Muqova hajmi 350 KB dan oshmasligi kerak", 400);
+  const key = `library/covers/${bid}.webp`;
+  await c.env.FILES.put(key, await file.arrayBuffer(), {
+    httpMetadata: { contentType: file.type || "image/webp" },
+  });
+  await stmt(c.env.DB, "UPDATE library_books SET cover_key=?, updated_at=? WHERE id=?", key, now(), bid).run();
+  return c.json({ ok: true, cover_key: key });
 });

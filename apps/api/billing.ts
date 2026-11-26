@@ -343,6 +343,31 @@ billingWebhook.post("/auto-webhook", async (c) => {
     ts,
   );
   if (!ord) {
+    // Agar tarif buyurtmasi topilmasa, pullik kitob buyurtmasini tekshiramiz
+    const bookOrd: any = await first(
+      c.env.DB,
+      `SELECT * FROM library_book_orders
+       WHERE status='pending' AND unique_amount=? AND expires_at >= ?
+       ORDER BY created_at DESC LIMIT 1`,
+      d.amount,
+      ts,
+    );
+    if (bookOrd) {
+      await stmt(
+        c.env.DB,
+        "UPDATE library_book_orders SET status='paid', paid_at=?, tx_note=? WHERE id=?",
+        ts,
+        d.raw_text.slice(0, 180) || d.source,
+        bookOrd.id,
+      ).run();
+      return c.json({
+        ok: true,
+        matched: true,
+        type: "book_order",
+        order_id: bookOrd.id,
+        book_id: bookOrd.book_id,
+      });
+    }
     return c.json({ ok: false, matched: false, message: "Mos keluvchi faol buyurtma topilmadi" });
   }
 

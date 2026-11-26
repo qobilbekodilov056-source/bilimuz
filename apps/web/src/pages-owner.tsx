@@ -11,6 +11,7 @@ import {
   Archive,
   Check,
   ClipboardCheck,
+  BookOpen,
   CreditCard,
   LifeBuoy,
   LogOut,
@@ -24,6 +25,7 @@ import {
 } from "lucide-react";
 import { api } from "./api";
 import { OwnerGamesPage } from "./pages-games";
+import { OwnerLibraryManager } from "./pages-owner-library";
 import {
   Busy,
   Empty,
@@ -42,6 +44,7 @@ const sections = [
   ["moderation", "Store moderatsiyasi", ClipboardCheck],
   ["games", "O‘yinlar", Gamepad2],
   ["shop", "Do‘kon / Packlar", ShoppingBag],
+  ["library", "Kutubxona & Sotuv", BookOpen],
   ["billing", "To‘lovlar", CreditCard],
   ["reports", "Kontent shikoyatlari", ShieldCheck],
   ["support", "Support inbox", LifeBuoy],
@@ -102,6 +105,8 @@ export function OwnerPage() {
           <OwnerGamesPage />
         ) : section === "shop" ? (
           <OwnerShopPacks />
+        ) : section === "library" ? (
+          <OwnerLibraryManager />
         ) : section === "billing" ? (
           <OwnerBillingPage />
         ) : section === "reports" ? (

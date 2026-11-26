@@ -453,6 +453,158 @@ owner.get("/library-books", async (c) => {
   );
   return c.json({ items });
 });
+
+// Owner: barcha kitoblar (narx, muqova, bob soni bilan)
+owner.get("/library-catalog", async (c) => {
+  const items = await rows(
+    c.env.DB,
+    `SELECT b.*, t.name tenant_name,
+      (SELECT COUNT(*) FROM library_chapters ch WHERE ch.book_id=b.id) chapter_count,
+      (SELECT COUNT(*) FROM library_book_orders o WHERE o.book_id=b.id AND o.status='paid') sales_count
+     FROM library_books b
+     LEFT JOIN tenants t ON t.id=b.tenant_id
+     ORDER BY b.updated_at DESC LIMIT 200`,
+  );
+  const orders = await rows(
+    c.env.DB,
+    `SELECT o.*, b.title book_title
+     FROM library_book_orders o
+     JOIN library_books b ON b.id=o.book_id
+     ORDER BY o.created_at DESC LIMIT 100`,
+  );
+  return c.json({ items, orders });
+});
+
+// Owner: yangi rasmiy kitob / IELTS qo‘llanma yaratish (darhol tasdiqlangan)
+owner.post("/library-books/create", async (c) => {
+  const p = c.get("principal");
+  const d = await body(
+    c,
+    z.object({
+      title: z.string().trim().min(2).max(180),
+      subject: z.string().trim().min(2).max(80),
+      summary: z.string().trim().max(1200).optional().default(""),
+      author_name: z.string().trim().max(100).optional().default("Bilim UZ Rasmiy"),
+      price_uzs: z.coerce.number().int().min(0).max(5000000).default(0),
+      chapter_title: z.string().trim().max(180).optional().default(""),
+      chapter_content: z.string().max(40000).optional().default(""),
+    }).strict(),
+  );
+  const t = now();
+  // Rasmiy tenant mavjud bo‘lmasa yaratamiz
+  await stmt(
+    c.env.DB,
+    `INSERT OR IGNORE INTO tenants(id, owner_user_id, slug, name, status, quotas_json, created_at)
+     VALUES('tenant_bilimuz_official', ?, 'bilimuz-official', 'Bilim UZ Rasmiy Bazasi', 'active', '{"questions":50000,"students":50000}', ?)`,
+    p.userId,
+    t,
+  ).run();
+  const bid = id();
+  await stmt(
+    c.env.DB,
+    `INSERT INTO library_books(id,tenant_id,title,subject,summary,tags,author_name,linked_card_slug,published,moderation_status,views_count,cover_key,price_uzs,created_at,updated_at)
+     VALUES(?,'tenant_bilimuz_official',?,?,?,'',?,'',1,'approved',0,'',?,?,?)`,
+    bid,
+    d.title,
+    d.subject,
+    d.summary,
+    d.author_name || "Bilim UZ Rasmiy",
+    d.price_uzs,
+    t,
+    t,
+  ).run();
+  if (d.chapter_title && d.chapter_content) {
+    await stmt(
+      c.env.DB,
+      `INSERT INTO library_chapters(id,book_id,position,title,summary,content,created_at,updated_at)
+       VALUES(?,?,1,?,'',?,?,?)`,
+      id(),
+      bid,
+      d.chapter_title,
+      d.chapter_content,
+      t,
+      t,
+    ).run();
+  }
+  return c.json({ ok: true, id: bid }, 201);
+});
+
+// Owner: mavjud kitobga yangi bob qo‘shish
+owner.post("/library-books/:id/chapters", async (c) => {
+  const bid = c.req.param("id");
+  const d = await body(
+    c,
+    z.object({
+      title: z.string().trim().min(2).max(180),
+      content: z.string().trim().min(5).max(50000),
+    }).strict(),
+  );
+  const mx: any = await first(c.env.DB, "SELECT COALESCE(MAX(position),0) m FROM library_chapters WHERE book_id=?", bid);
+  const t = now();
+  await stmt(
+    c.env.DB,
+    "INSERT INTO library_chapters(id,book_id,position,title,summary,content,created_at,updated_at) VALUES(?,?,?,?, '', ?, ?, ?)",
+    id(),
+    bid,
+    Number(mx?.m || 0) + 1,
+    d.title,
+    d.content,
+    t,
+    t,
+  ).run();
+  await stmt(c.env.DB, "UPDATE library_books SET updated_at=? WHERE id=?", t, bid).run();
+  return c.json({ ok: true }, 201);
+});
+
+// Owner: istalgan kitob narxini belgilash (0 = bepul)
+owner.post("/library-books/:id/pricing", async (c) => {
+  const bid = c.req.param("id");
+  const d = await body(
+    c,
+    z.object({
+      price_uzs: z.coerce.number().int().min(0).max(5000000),
+    }).strict(),
+  );
+  await stmt(
+    c.env.DB,
+    "UPDATE library_books SET price_uzs=?, updated_at=? WHERE id=?",
+    d.price_uzs,
+    now(),
+    bid,
+  ).run();
+  return c.json({ ok: true, price_uzs: d.price_uzs });
+});
+
+// Owner: kitobga yengil WebP muqova yuklash
+owner.post("/library-books/:id/cover", async (c) => {
+  const bid = c.req.param("id");
+  const fd = await c.req.formData();
+  const file = fd.get("file");
+  if (!(file instanceof File)) fail("Muqova rasmi tanlanmadi", 400);
+  if (file.size > 350 * 1024) fail("Muqova hajmi 350 KB dan oshmasligi kerak", 400);
+  const key = `library/covers/${bid}.webp`;
+  await c.env.FILES.put(key, await file.arrayBuffer(), {
+    httpMetadata: { contentType: file.type || "image/webp" },
+  });
+  await stmt(c.env.DB, "UPDATE library_books SET cover_key=?, updated_at=? WHERE id=?", key, now(), bid).run();
+  return c.json({ ok: true, cover_key: key });
+});
+
+// Owner: kitob buyurtmasini qo‘lda tasdiqlash / rad etish
+owner.post("/library-orders/:oid/decision", async (c) => {
+  const oid = c.req.param("oid");
+  const d = await body(c, z.object({ status: z.enum(["paid", "rejected"]) }).strict());
+  await stmt(
+    c.env.DB,
+    "UPDATE library_book_orders SET status=?, paid_at=?, tx_note=? WHERE id=?",
+    d.status,
+    d.status === "paid" ? now() : null,
+    d.status === "paid" ? "Owner tasdiqladi" : "Owner rad etdi",
+    oid,
+  ).run();
+  return c.json({ ok: true });
+});
+
 owner.post("/library-books/:id", async (c) => {
   const d = await body(c, z.object({ decision: z.enum(["approved", "rejected"]) }));
   await stmt(
