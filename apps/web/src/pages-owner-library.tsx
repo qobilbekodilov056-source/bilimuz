@@ -1,5 +1,15 @@
 import { useState, type FormEvent } from "react";
-import { BookOpen, CheckCircle2, Coins, Image as ImageIcon, Plus, XCircle } from "lucide-react";
+import {
+  BookOpen,
+  CheckCircle2,
+  Coins,
+  CreditCard,
+  Image as ImageIcon,
+  Plus,
+  Target,
+  Ticket,
+  XCircle,
+} from "lucide-react";
 import { api } from "./api";
 import { Busy, Empty, ErrorBox, Field, Modal, PageTitle, Pill, useData, useToast } from "./ui";
 
@@ -281,13 +291,13 @@ export function OwnerLibraryManager() {
           <Coins size={14} /> Kitob xaridlari ({orders.length})
         </button>
         <button type="button" className={tab === "tests" ? "btn primary tiny" : "btn secondary tiny"} onClick={() => setTab("tests")}>
-          🎯 Pullik testlar ({paidCards.length})
+          <Target size={14} color="#0c8066" /> Pullik testlar ({paidCards.length})
         </button>
         <button type="button" className={tab === "test_orders" ? "btn primary tiny" : "btn secondary tiny"} onClick={() => setTab("test_orders")}>
-          💳 Test xaridlari ({testOrders.length})
+          <CreditCard size={14} color="#0284c7" /> Test xaridlari ({testOrders.length})
         </button>
         <button type="button" className={tab === "promos" ? "btn primary tiny" : "btn secondary tiny"} onClick={() => setTab("promos")}>
-          🎟️ Promokodlar ({promos.length})
+          <Ticket size={14} color="#d97706" /> Promokodlar ({promos.length})
         </button>
       </div>
 

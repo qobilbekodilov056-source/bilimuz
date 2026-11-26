@@ -12,8 +12,10 @@ import {
   LogOut,
   MessageCircle,
   Sparkles,
+  Target,
   UserCheck,
   Users,
+  Zap,
 } from "lucide-react";
 import { api } from "./api";
 import { Busy, Empty, ErrorBox, Pill, useData, useToast } from "./ui";
@@ -75,7 +77,7 @@ export function LearnerBillingStandalone() {
   return (
     <div style={{ maxWidth: 1020, margin: "0 auto", padding: "12px 4px 48px" }}>
       <div style={{ textAlign: "center", marginBottom: 28 }}>
-        <Pill tone="green">🎓 ABITURIYENT VA O‘QUVCHI TARIFLARI</Pill>
+        <Pill tone="green"><GraduationCap size={14} color="#0c8066" /> ABITURIYENT VA O‘QUVCHI TARIFLARI</Pill>
         <h1 style={{ margin: "10px 0 8px", fontSize: "clamp(26px, 3.2vw, 38px)" }}>O‘zingizga mos obunani tanlang</h1>
         <p className="muted" style={{ maxWidth: 560, margin: "0 auto 18px" }}>
           Obuna davomida tanlangan barcha pullik kitob va IELTS/DTM testlari ochiq bo‘ladi. Alohida sotib olgan kitob va testlaringiz esa profilingizda umrbod qoladi.
@@ -176,7 +178,7 @@ export function LearnerBillingStandalone() {
         <article className="panel" style={{ display: "flex", flexDirection: "column", gap: 14, padding: 26, borderRadius: 22, border: "2px solid #0c8066", background: "linear-gradient(180deg, #f0fdf8 0%, #ffffff 35%)" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <h2 style={{ margin: 0, fontSize: 22 }}>Abituriyent Pro</h2>
-            <Pill tone="green">{curPlan.id === "learner_pro" ? "Faol" : "⚡ Eng ommabop"}</Pill>
+            <Pill tone="green">{curPlan.id === "learner_pro" ? "Faol" : <><Zap size={13} color="#d97706" /> Eng ommabop</>}</Pill>
           </div>
           <div>
             <strong style={{ fontSize: 32 }}>{calcPrice(59000).toLocaleString("uz-UZ")} so‘m</strong> <span className="muted">/ oy</span>
@@ -270,7 +272,7 @@ export function LearnerCabinetPage() {
           <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
               <div>
-                <h1 style={{ margin: 0 }}>📚 Mening kitoblarim</h1>
+                <h1 style={{ margin: 0, display: "inline-flex", alignItems: "center", gap: 10 }}><BookOpen size={26} color="#4f46e5" /> Mening kitoblarim</h1>
                 <p className="muted" style={{ margin: "4px 0 0" }}>
                   {has_books_access
                     ? "Faol obunangiz tufayli kutubxonadagi barcha pullik kitoblar ochiq!"
@@ -290,7 +292,7 @@ export function LearnerCabinetPage() {
               <div className="cards-grid">
                 {paid_books.map((b: any) => (
                   <article className="panel" key={b.id} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    <Pill tone="green">✓ Umrbod ochiq</Pill>
+                    <Pill tone="green"><Check size={13} color="#0c8066" /> Umrbod ochiq</Pill>
                     <h3 style={{ margin: 0 }}>{b.title}</h3>
                     <small className="muted">{b.subject}</small>
                     <Link to={"/library/" + encodeURIComponent(b.id)} className="btn primary tiny" style={{ marginTop: "auto" }}>
@@ -305,7 +307,7 @@ export function LearnerCabinetPage() {
           <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
               <div>
-                <h1 style={{ margin: 0 }}>🎯 Mening testlarim</h1>
+                <h1 style={{ margin: 0, display: "inline-flex", alignItems: "center", gap: 10 }}><Target size={26} color="#0c8066" /> Mening testlarim</h1>
                 <p className="muted" style={{ margin: "4px 0 0" }}>
                   {has_tests_access
                     ? "Abituriyent Pro obunangiz faol — barcha IELTS/DTM pullik testlar ochiq!"
@@ -325,7 +327,7 @@ export function LearnerCabinetPage() {
               <div className="cards-grid">
                 {paid_tests.map((t: any) => (
                   <article className="panel" key={t.id} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    <Pill tone="green">✓ Umrbod ochiq</Pill>
+                    <Pill tone="green"><Check size={13} color="#0c8066" /> Umrbod ochiq</Pill>
                     <h3 style={{ margin: 0 }}>{t.title}</h3>
                     <small className="muted">{t.slug}</small>
                     <Link to={"/practice/" + encodeURIComponent(t.slug)} className="btn primary tiny" style={{ marginTop: "auto" }}>
@@ -339,7 +341,7 @@ export function LearnerCabinetPage() {
         ) : section === "results" ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
             <div>
-              <h1 style={{ margin: 0 }}>📊 Natijalarim</h1>
+              <h1 style={{ margin: 0, display: "inline-flex", alignItems: "center", gap: 10 }}><BarChart3 size={26} color="#0284c7" /> Natijalarim</h1>
               <p className="muted" style={{ margin: "4px 0 0" }}>
                 Jami yechilgan: <strong>{test_history.length}</strong> ta · O‘rtacha natija: <strong>{avgPct}%</strong>
               </p>

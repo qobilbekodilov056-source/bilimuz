@@ -4,11 +4,17 @@ import {
   ArrowLeft,
   ArrowRight,
   BookOpen,
+  CheckCircle2,
   Eye,
+  FileText,
+  KeyRound,
+  Lock,
   Plus,
   Printer,
   Search,
+  Target,
   Trash2,
+  Zap,
 } from "lucide-react";
 import { api } from "./api";
 import { parseBookFileToChapters, type ParsedChapter } from "./docx-parser";
@@ -63,7 +69,7 @@ function QuizRevealCard({ question, answer }: { question: string; answer: string
   return (
     <div className={"lib-quiz-card" + (open ? " is-open" : "")}>
       <div className="lib-quiz-q">
-        <span className="lib-quiz-badge">🎯 O‘zingizni sinang</span>
+        <span className="lib-quiz-badge" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Target size={14} color="#0c8066" /> O‘zingizni sinang</span>
         <p>{renderInline(question)}</p>
       </div>
       <button
@@ -606,7 +612,7 @@ export function LibraryBookReader() {
               )}
               <div className="lib-prose">{book.auth_required ? (
                   <div className="panel" style={{ textAlign: "center", padding: "36px 20px", background: "#f8fafc", border: "1.5px dashed #162d3d" }}>
-                    <h3 style={{ margin: "0 0 8px" }}>🔐 Kitobni o‘qish uchun tizimga kiring</h3>
+                    <h3 style={{ margin: "0 0 8px", display: "inline-flex", alignItems: "center", gap: 8 }}><KeyRound size={20} color="#162d3d" /> Kitobni o‘qish uchun tizimga kiring</h3>
                     <p className="muted" style={{ maxWidth: 460, margin: "0 auto 18px" }}>
                       {Number(book.price_uzs || 0) > 0
                         ? "Bepul ro‘yxatdan o‘tib 1-bobni o‘qishingiz, keyin kitobni alohida yoki «Ustoz Pro / Ultra» obunasi ichida ochishingiz mumkin."
@@ -619,7 +625,7 @@ export function LibraryBookReader() {
                   </div>
                 ) : activeChapter.locked ? (
                   <div className="panel" style={{ textAlign: "center", padding: "36px 20px", background: "#f8fafc", border: "1.5px dashed #0c8066" }}>
-                    <h3 style={{ margin: "0 0 8px" }}>🔒 Bu bob pullik qo‘llanma tarkibida</h3>
+                    <h3 style={{ margin: "0 0 8px", display: "inline-flex", alignItems: "center", gap: 8 }}><Lock size={20} color="#d97706" /> Bu bob pullik qo‘llanma tarkibida</h3>
                     <p className="muted" style={{ maxWidth: 480, margin: "0 auto 18px" }}>
                       Ikki qulay yo‘ldan birini tanlang: faqat shu kitobni 1 marta sotib oling yoki <strong>Ustoz Pro / Ultra</strong> obunasi bilan platformadagi <strong>barcha pullik kitob va testlarni</strong> birdan oching!
                     </p>
@@ -628,7 +634,7 @@ export function LibraryBookReader() {
                         Alohida sotib olish — {Number(book.price_uzs || 0).toLocaleString("uz-UZ")} so‘m
                       </button>
                       <Link className="btn secondary" to="/pricing">
-                        ⚡ Obuna bilan hammasini ochish (29 000 so‘m/oy dan)
+                        <Zap size={15} color="#0c8066" /> Obuna bilan hammasini ochish (29 000 so‘m/oy dan)
                       </Link>
                     </div>
                   </div>
@@ -794,7 +800,7 @@ export function LibraryStudio() {
             <Link className="btn secondary" to="/library" target="_blank">
               Ochiq kutubxonani ko‘rish
             </Link>
-            <button type="button" className="btn secondary" onClick={() => setShowImport(true)}>📄 Word / PDF dan yuklash</button>
+            <button type="button" className="btn secondary" onClick={() => setShowImport(true)}><FileText size={15} color="#4f46e5" /> Word / PDF dan yuklash</button>
             <button
               type="button"
               className="btn primary"
@@ -1295,7 +1301,7 @@ function ImportBookModal({
 
         {!isPdf && parsedChapters.length > 0 && (
           <div className="lib-import-preview">
-            <strong>✅ {parsedChapters.length} ta bob avtomatik ajratildi:</strong>
+            <strong style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><CheckCircle2 size={16} color="#0c8066" /> {parsedChapters.length} ta bob avtomatik ajratildi:</strong>
             <ul>
               {parsedChapters.slice(0, 6).map((ch, i) => (
                 <li key={i}>{i + 1}. {ch.title}</li>
@@ -1307,7 +1313,7 @@ function ImportBookModal({
 
         {isPdf && file && file.size <= 15 * 1024 * 1024 && (
           <div className="lib-import-preview">
-            <strong>📕 PDF kitob rejimi:</strong> Fayl asl dizayni, rasmlari va formulalari bilan ichki PDF kitob o‘quvchida ochiladi.
+            <strong style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><FileText size={16} color="#e11d48" /> PDF kitob rejimi:</strong> Fayl asl dizayni, rasmlari va formulalari bilan ichki PDF kitob o‘quvchida ochiladi.
           </div>
         )}
 

@@ -1,5 +1,10 @@
 import { Link } from "react-router-dom";
-import { ArrowLeft, GraduationCap, ShieldCheck } from "lucide-react";
+import {
+  ArrowLeft,
+  GraduationCap,
+  Presentation,
+  ShieldCheck,
+} from "lucide-react";
 import { Busy, Pill, useData } from "./ui";
 import { TeacherBillingPage } from "./pages-billing";
 import { LearnerBillingStandalone } from "./pages-learner";
@@ -25,7 +30,7 @@ export function StandalonePricingPage() {
           </Link>
           <div style={{ minWidth: 110, textAlign: "right" }}>
             {isLoggedIn ? (
-              <Pill tone="green">{isLearner ? "🎓 Abituriyent" : "👨‍🏫 O‘qituvchi"}</Pill>
+              <Pill tone="green">{isLearner ? <><GraduationCap size={13} color="#0c8066" /> Abituriyent</> : <><Presentation size={13} color="#162d3d" /> O‘qituvchi</>}</Pill>
             ) : (
               <Link to="/login" className="btn primary tiny">Kirish</Link>
             )}

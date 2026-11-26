@@ -6,6 +6,7 @@ import {
   Bell,
   BookOpen,
   Calculator,
+  CalendarDays,
   CheckCircle2,
   Coins,
   FileSpreadsheet,
@@ -13,6 +14,7 @@ import {
   Play,
   QrCode,
   Sparkles,
+  Trophy,
   Users,
 } from "lucide-react";
 
@@ -158,7 +160,7 @@ export function DynamicLandingShowcase() {
               <div className="lpd-demo-card">
                 <div className="lpd-demo-top">
                   <span>NAMUNA SAVOL · KOMPYUTER SAVODXONLIGI</span>
-                  <span className="lpd-coin-tag">+25 🪙</span>
+                  <span className="lpd-coin-tag" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>+25 <Coins size={13} color="#b45309" /></span>
                 </div>
                 <h3>Veb-sayt manzili boshidagi «HTTPS» protokoli nimani ta’minlaydi?</h3>
                 <div className="lpd-opts">
@@ -198,7 +200,7 @@ export function DynamicLandingShowcase() {
                   </div>
                 ) : pickedOpt === quizCorrect ? (
                   <div className="lpd-cert-pop">
-                    <div className="lpd-coin-burst">+25 Bilim Coin qo‘shildi! 🎉</div>
+                    <div className="lpd-coin-burst" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}><Sparkles size={15} /> +25 Bilim Coin qo‘shildi!</div>
                     <div className="lpd-mini-cert">
                       <div className="lpd-mini-cert-top">
                         <Award size={20} /> <strong>BILIM UZ · SERTIFIKAT</strong>
@@ -250,12 +252,12 @@ export function DynamicLandingShowcase() {
                 </div>
                 <div className="lpd-phone-body">
                   <div className="lpd-tg-msg">
-                    <strong>📅 Davomat</strong>
+                    <strong style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><CalendarDays size={14} color="#38bdf8" /> Davomat</strong>
                     <p>Farzandingiz <b>Azizbek</b> bugungi Informatika darsiga <b>keldi ✓</b> (15:00).</p>
                   </div>
                   {tgSent ? (
                     <div className="lpd-tg-msg is-new">
-                      <strong>🏆 Test natijasi — 95%</strong>
+                      <strong style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Trophy size={14} color="#fbbf24" /> Test natijasi — 95%</strong>
                       <p>«Kompyuter savodxonligi» testidan <b>19 / 20</b> ball oldi! +40 Bilim Coin va QR sertifikat tayyor.</p>
                       <small>Hozirgina · Bilim UZ</small>
                     </div>
@@ -299,7 +301,7 @@ export function DynamicLandingShowcase() {
                 )}
                 {excelStep === 2 && (
                   <div className="lpd-excel-done">
-                    <div className="lpd-coin-burst">✅ 100 ta savol 0.9 soniyada tayyor!</div>
+                    <div className="lpd-coin-burst" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}><CheckCircle2 size={15} /> 100 ta savol 0.9 soniyada tayyor!</div>
                     <ul>
                       <li><CheckCircle2 size={15} /> Onlayn test kodi: <b>KP-84920</b></li>
                       <li><CheckCircle2 size={15} /> 4 variantli oflayn A4 PDF + javoblar kaliti</li>

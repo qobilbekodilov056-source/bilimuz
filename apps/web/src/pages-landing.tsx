@@ -17,6 +17,7 @@ import {
   Sparkles,
   Users,
   X,
+  Zap,
 } from "lucide-react";
 import { useConfig } from "./main";
 import { DynamicLandingShowcase } from "./pages-landing-dynamic";
@@ -118,7 +119,7 @@ export function LandingPage() {
 
           <div className="lp-header-right">
             <Link to="/pricing" className="lp-pill-outline sm" style={{ borderColor: "#0c8066", color: "#0c8066" }}>
-              ⚡ Upgrade
+              <Zap size={14} color="#0c8066" /> Upgrade
             </Link>
             <Link to="/studio" className="lp-pill-cta">
               Kabinetim <ArrowRight size={15} />
@@ -187,7 +188,7 @@ export function LandingPage() {
             <div className="lp-hero-aura" aria-hidden="true" />
             <span className="lp-float-orb orb-1" aria-hidden="true"><Sparkles size={15} /></span>
             <span className="lp-float-orb orb-2" aria-hidden="true"><ShieldCheck size={15} /></span>
-            <span className="lp-float-chip chip-1">🏅 QR Sertifikat</span>
+            <span className="lp-float-chip chip-1" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Award size={15} color="#d97706" /> QR Sertifikat</span>
             <span className="lp-float-chip chip-2">⚡ Tezkor tahlil</span>
 
             <div className="lp-test-card">

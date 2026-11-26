@@ -4,7 +4,9 @@ import {
   ArrowLeft,
   ArrowRight,
   CheckCircle2,
+  GraduationCap,
   LockKeyhole,
+  Presentation,
   Send,
   ShieldCheck,
 } from "lucide-react";
@@ -224,7 +226,7 @@ export function AuthPage({
               onClick={() => { setAccountType("learner"); setRoleChosen(true); }}
               style={{ background: "#fff", border: "2px solid transparent", borderRadius: 22, padding: 28, cursor: "pointer", display: "flex", flexDirection: "column", gap: 10, boxShadow: "0 20px 44px rgba(0,0,0,0.22)" }}
             >
-              <span style={{ fontSize: 38 }}>🎓</span>
+              <span style={{ width: 54, height: 54, borderRadius: 16, background: "#ecfdf5", color: "#0c8066", display: "inline-flex", alignItems: "center", justifyContent: "center" }}><GraduationCap size={28} /></span>
               <strong style={{ fontSize: 22, color: "#11191e" }}>O‘quvchi / Abituriyent</strong>
               <p style={{ margin: 0, color: "#475569", fontSize: 14.5, lineHeight: 1.55 }}>
                 IELTS, DTM, fan testlarini yechish, elektron kitob va qo‘llanmalarni o‘qish, natijalarni kuzatish hamda shaxsiy kutubxona yig‘ish uchun.
@@ -238,7 +240,7 @@ export function AuthPage({
               onClick={() => { setAccountType("teacher"); setRoleChosen(true); }}
               style={{ background: "#fff", border: "2px solid transparent", borderRadius: 22, padding: 28, cursor: "pointer", display: "flex", flexDirection: "column", gap: 10, boxShadow: "0 20px 44px rgba(0,0,0,0.22)" }}
             >
-              <span style={{ fontSize: 38 }}>👨‍🏫</span>
+              <span style={{ width: 54, height: 54, borderRadius: 16, background: "#eef2f6", color: "#162d3d", display: "inline-flex", alignItems: "center", justifyContent: "center" }}><Presentation size={28} /></span>
               <strong style={{ fontSize: 22, color: "#11191e" }}>O‘qituvchi / O‘quv markazi</strong>
               <p style={{ margin: 0, color: "#475569", fontSize: 14.5, lineHeight: 1.55 }}>
                 Shaxsiy workspace yaratish, Excel’dan 100 ta test yuklash, guruhlar, kurs jurnali, vazifalar va ota-ona Telegram botini boshqarish uchun.
@@ -318,7 +320,7 @@ export function AuthPage({
                   cursor: "pointer",
                 }}
               >
-                <div style={{ fontWeight: 700, fontSize: 14, color: "#11191e" }}>🎓 O‘quvchi / Abituriyent</div>
+                <div style={{ fontWeight: 700, fontSize: 14, color: "#11191e", display: "inline-flex", alignItems: "center", gap: 6 }}><GraduationCap size={16} color="#0c8066" /> O‘quvchi / Abituriyent</div>
                 <div style={{ fontSize: 12, color: "#475569", marginTop: 3 }}>Testlar, IELTS/DTM va kutubxona</div>
               </button>
               <button
@@ -333,7 +335,7 @@ export function AuthPage({
                   cursor: "pointer",
                 }}
               >
-                <div style={{ fontWeight: 700, fontSize: 14, color: "#11191e" }}>👨‍🏫 O‘qituvchi / Markaz</div>
+                <div style={{ fontWeight: 700, fontSize: 14, color: "#11191e", display: "inline-flex", alignItems: "center", gap: 6 }}><Presentation size={16} color="#162d3d" /> O‘qituvchi / Markaz</div>
                 <div style={{ fontSize: 12, color: "#475569", marginTop: 3 }}>Workspace, guruhlar va jurnal</div>
               </button>
             </div>

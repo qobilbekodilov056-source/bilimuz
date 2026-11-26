@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
+  AlertTriangle,
   ArrowLeft,
   ArrowRight,
   Award,
@@ -10,8 +11,14 @@ import {
   CloudOff,
   Download,
   Flag,
+  KeyRound,
+  Lock,
+  MessageCircle,
   RotateCcw,
   ShieldCheck,
+  Trophy,
+  Users,
+  Zap,
 } from "lucide-react";
 import { api, uuidToken, ApiError } from "./api";
 import { openCertificatePrint } from "./cert-pdf";
@@ -101,12 +108,12 @@ export function ExamPage() {
             <p>{card.data.card.description}</p>
             {card.data.card.reward && (
               <div className="reward-banner">
-                <strong>🏆 Yutuq:</strong> {card.data.card.reward}
+                <strong style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><Trophy size={15} color="#d97706" /> Yutuq:</strong> {card.data.card.reward}
               </div>
             )}
             {card.data.card.anti_cheat && card.data.card.anti_cheat !== "off" && (
               <div className="anticheat-join-note">
-                <strong>🛡 Imtihon nazorati yoqilgan:</strong>{" "}
+                <strong style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><ShieldCheck size={15} color="#0c8066" /> Imtihon nazorati yoqilgan:</strong>{" "}
                 {card.data.card.anti_cheat === "strict"
                   ? `Boshqa tab/oynaga o‘tish, sichqonchani oynadan chiqarish yoki nusxalash qayd etiladi. ${card.data.card.max_violations || 3} marta qoidabuzarlikda test avtomatik yakunlanadi.`
                   : "Boshqa tab/oynaga o‘tish, sichqonchani oynadan chiqarish va nusxalash urinishlari o‘qituvchi hisobotida qayd etiladi."}
@@ -684,7 +691,7 @@ function ActiveExam({
       {alertBanner && (
         <div className="anticheat-banner" role="alert">
           <div className="anticheat-banner-text">
-            <strong>⚠️ OGOHLANTIRISH:</strong> {alertBanner.text}{" "}
+            <strong style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><AlertTriangle size={16} color="#d97706" /> OGOHLANTIRISH:</strong> {alertBanner.text}{" "}
             <span className="anticheat-count">
               {acMode === "strict"
                 ? `Qoidabuzarlik: ${violations} / ${maxV}${maxV - violations === 1 ? " — yana 1 marta takrorlansa test avtomatik yakunlanadi!" : ""}`
@@ -1107,7 +1114,7 @@ function ExamResult({ data, slug }: { data: any; slug: string }) {
         </p>
         {r.passed && r.reward && (
           <div className="reward-banner">
-            <strong>🏆 Tabriklaymiz! Yutuq:</strong> {r.reward}
+            <strong style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><Trophy size={16} color="#d97706" /> Tabriklaymiz! Yutuq:</strong> {r.reward}
           </div>
         )}
         {Number(r.earned_coins || 0) > 0 && (
@@ -1279,7 +1286,7 @@ function ExamResult({ data, slug }: { data: any; slug: string }) {
       {r.anti_cheat !== "off" && (
         <section className={"panel ac-result-panel" + ((r.violations_count || 0) > 0 ? " has-issues" : "")}>
           <div className="ac-result-head">
-            <h2>🛡 Imtihon nazorati hisoboti</h2>
+            <h2 style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><ShieldCheck size={20} color="#0c8066" /> Imtihon nazorati hisoboti</h2>
             {r.auto_submitted ? (
               <Pill tone="red">Avtomatik yakunlandi ({r.violations_count || 0} ta qoidabuzarlik)</Pill>
             ) : (r.violations_count || 0) > 0 ? (
@@ -1402,13 +1409,13 @@ export function PracticeCatalog() {
             <article className="panel test-card" key={c.slug}>
               <div className="test-card-top">
                 <Pill tone={Number(c.price_uzs) > 0 ? "amber" : "green"}>
-                  {Number(c.price_uzs) > 0 ? `🔒 ${Number(c.price_uzs).toLocaleString("uz-UZ")} so‘m` : (c.category || "Ochiq test")}
+                  {Number(c.price_uzs) > 0 ? <><Lock size={12} color="#b45309" /> {Number(c.price_uzs).toLocaleString("uz-UZ")} so‘m</> : (c.category || "Ochiq test")}
                 </Pill>
                 <small className="muted">{c.slug}</small>
               </div>
               <h2>{c.title}</h2>
               <p>{c.description || "Ro‘yxatdan o‘tmasdan mashq testi"}</p>
-              {c.reward && <div className="card-reward">🏆 Yutuq: {c.reward}</div>}
+              {c.reward && <div className="card-reward" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Trophy size={15} color="#d97706" /> Yutuq: {c.reward}</div>}
               <div className="test-card-details">
                 <span>
                   <BookOpen size={15} />
@@ -1500,10 +1507,10 @@ function ExamFeedbackBox({
   return (
     <section className="panel feedback-panel">
       <div className="feedback-head">
-        <h2>💬 Test haqida fikringizni bildiring</h2>
+        <h2 style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><MessageCircle size={20} color="#0c8066" /> Test haqida fikringizni bildiring</h2>
         {list.data && (
           <small className="muted">
-            👥 {list.data.market_solves || 0} marta yechilgan
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><Users size={14} color="#475569" /> {list.data.market_solves || 0} marta yechilgan</span>
             {list.data.avg_rating ? ` · ★ ${list.data.avg_rating} (${list.data.count} ta fikr)` : ""}
           </small>
         )}
@@ -1703,7 +1710,7 @@ export function PracticeExam() {
           Ochiq testlar
         </Link>
         <div className="panel" style={{ maxWidth: 520, margin: "16px auto", textAlign: "center", display: "flex", flexDirection: "column", gap: 14, padding: "32px 24px" }}>
-          <Pill tone="blue">🔐 RO‘YXATDAN O‘TISH TALAB ETILADI</Pill>
+          <Pill tone="blue"><KeyRound size={13} color="#0284c7" /> RO‘YXATDAN O‘TISH TALAB ETILADI</Pill>
           <h1 style={{ margin: 0 }}>{card.title}</h1>
           <p className="muted" style={{ margin: 0 }}>
             {Number(card.price_uzs || 0) > 0
@@ -1727,7 +1734,7 @@ export function PracticeExam() {
           Ochiq testlar
         </Link>
         <div className="panel" style={{ maxWidth: 540, margin: "16px auto", display: "flex", flexDirection: "column", gap: 14 }}>
-          <Pill tone="amber">🔒 PULLIK MAXSUS TEST</Pill>
+          <Pill tone="amber"><Lock size={13} color="#d97706" /> PULLIK MAXSUS TEST</Pill>
           <h1 style={{ margin: 0 }}>{card.title}</h1>
           <p className="muted" style={{ margin: 0 }}>
             {card.description || "To‘liq savollar, vaqt nazorati, batafsil tahlil va rasmiy QR sertifikat."}
@@ -1756,7 +1763,7 @@ export function PracticeExam() {
                 {buyBusy ? "Tayyorlanmoqda..." : `Alohida sotib olish — ${Number(card.price_uzs || 0).toLocaleString("uz-UZ")} so‘m`}
               </button>
               <Link to="/pricing" className="btn secondary full" style={{ textAlign: "center" }}>
-                ⚡ Obuna bilan barcha pullik test va kitoblarni ochish (29 000 so‘m/oy dan)
+                <Zap size={15} color="#0c8066" /> Obuna bilan barcha pullik test va kitoblarni ochish (29 000 so‘m/oy dan)
               </Link>
             </form>
           ) : (
@@ -1808,7 +1815,7 @@ export function PracticeExam() {
           </p>
           {result.passed && result.reward && (
             <div className="reward-banner">
-              <strong>🏆 Tabriklaymiz! Yutuq:</strong> {result.reward}
+              <strong style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><Trophy size={16} color="#d97706" /> Tabriklaymiz! Yutuq:</strong> {result.reward}
             </div>
           )}
           <div className="actions" style={{ justifyContent: "center", marginTop: 14 }}>
@@ -1964,7 +1971,7 @@ export function PracticeExam() {
             <p>{card.description}</p>
             {card.reward && (
               <div className="reward-banner">
-                <strong>🏆 Yutuq:</strong> {card.reward}
+                <strong style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><Trophy size={15} color="#d97706" /> Yutuq:</strong> {card.reward}
               </div>
             )}
             <div className="exam-rules">

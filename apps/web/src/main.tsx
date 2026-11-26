@@ -19,8 +19,8 @@ import {
   ArrowRight,
   BarChart3,
   Bell,
-  BookOpen,
   BookMarked,
+  BookOpen,
   CalendarDays,
   ChevronDown,
   ChevronRight,
@@ -39,6 +39,7 @@ import {
   Store,
   Users,
   X,
+  Zap,
 } from "lucide-react";
 import { api } from "./api";
 import { Busy, ErrorBox, ToastProvider, useData } from "./ui";
@@ -121,7 +122,7 @@ function ProGate({ title, desc, children }: { title: string; desc: string; child
       </div>
       <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
         <Link to="/pricing" className="btn primary">
-          ⚡ Ustoz Pro ga o‘tish
+          <Zap size={15} /> Ustoz Pro ga o‘tish
         </Link>
         <Link to="/studio" className="btn secondary">
           Boshqaruvga qaytish
