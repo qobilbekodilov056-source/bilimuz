@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -21,6 +21,10 @@ import {
   Sparkles,
   Trophy,
   Upload,
+  ExternalLink,
+  Maximize2,
+  Play,
+  Search,
 } from "lucide-react";
 import { api } from "./api";
 import { Busy, Empty, ErrorBox, Field, Modal, Pill, useData, useToast } from "./ui";
@@ -177,7 +181,7 @@ function ActivitySparkline({ tests, avg }: { tests: any[]; avg: number | null })
   );
 }
 
-type NavTab = "dashboard" | "hw" | "tests" | "attendance" | "rating" | "shop";
+type NavTab = "dashboard" | "hw" | "tests" | "attendance" | "rating" | "shop" | "games";
 
 const SESSION_KEY = "bilimuz_student_session";
 const SESSION_TTL_MS = 60 * 60 * 1000; // 1 soat
@@ -229,6 +233,7 @@ export function StudentCabinetPage() {
     }
   }, [code, navigate]);
   const [tab, setTab] = useState<NavTab>("dashboard");
+  const [activeGame, setActiveGame] = useState<any>(null);
   const [shopCat, setShopCat] = useState<ShopSlot>("banner");
   const [shopBusy, setShopBusy] = useState<string>("");
   const [showCodeModal, setShowCodeModal] = useState(false);
@@ -476,12 +481,19 @@ export function StudentCabinetPage() {
               </span>
               <span className="mg-nav-label">Kutubxona</span>
             </Link>
-            <Link to="/games" className="mg-nav-item">
+            <button
+              type="button"
+              className={"mg-nav-item" + (tab === "games" ? " is-active" : "")}
+              onClick={() => {
+                setTab("games");
+                setActiveGame(null);
+              }}
+            >
               <span className="mg-nav-orb">
                 <Gamepad2 size={16} />
               </span>
               <span className="mg-nav-label">O‘yinlar</span>
-            </Link>
+            </button>
             <button
               type="button"
               className="mg-nav-item"
@@ -1008,6 +1020,22 @@ export function StudentCabinetPage() {
                     </div>
                   </div>
                 )}
+
+                {tab === "games" && (
+                  <StudentInlineGamesArena
+                    studentCode={activeCode}
+                    activeGame={activeGame}
+                    setActiveGame={setActiveGame}
+                    onGameStart={() => {
+                      if (activeCode) {
+                        api(`/api/v2/public/assignments/shop/${encodeURIComponent(activeCode)}/quest-visit`, {
+                          method: "POST",
+                          data: { quest_id: "q_game" },
+                        }).catch(() => {});
+                      }
+                    }}
+                  />
+                )}
               </main>
 
               {/* RIGHT WIDGET RAIL (matching Today note + My files + Activity) */}
@@ -1068,7 +1096,24 @@ export function StudentCabinetPage() {
                             <strong>{q.title}</strong>
                           </div>
                           <div className="mg-quest-bot">
-                            <Link to={q.link} className="mg-quest-go" onClick={() => { if (activeCode && (q.id === "q_book" || q.id === "q_game")) { api(`/api/v2/public/assignments/shop/${encodeURIComponent(activeCode)}/quest-visit`, { method: "POST", data: { quest_id: q.id } }).catch(() => {}); } }}>{q.link_label} ↗</Link>
+                            {q.id === "q_game" ? (
+                              <button
+                                type="button"
+                                className="mg-quest-go"
+                                style={{ background: "none", border: 0, padding: 0, cursor: "pointer" }}
+                                onClick={() => {
+                                  if (activeCode) {
+                                    api(`/api/v2/public/assignments/shop/${encodeURIComponent(activeCode)}/quest-visit`, { method: "POST", data: { quest_id: "q_game" } }).catch(() => {});
+                                  }
+                                  setTab("games");
+                                  setActiveGame(null);
+                                }}
+                              >
+                                {q.link_label} ↗
+                              </button>
+                            ) : (
+                              <Link to={q.link} className="mg-quest-go" onClick={() => { if (activeCode && q.id === "q_book") { api(`/api/v2/public/assignments/shop/${encodeURIComponent(activeCode)}/quest-visit`, { method: "POST", data: { quest_id: "q_book" } }).catch(() => {}); } }}>{q.link_label} ↗</Link>
+                            )}
                             {q.claimed ? (
                               <span className="mg-quest-ok" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><CheckCircle2 size={13} color="#059669" /> +{q.reward} <Coins size={12} color="#d97706" /></span>
                             ) : (
@@ -1242,5 +1287,204 @@ function HubSubmitModal({
         </button>
       </form>
     </Modal>
+  );
+}
+
+const GAME_MODES = [
+  ["", "Barchasi"],
+  ["duel", "1 vs 1 Duel"],
+  ["team", "Jamoaviy"],
+  ["multiplayer", "Multiplayer"],
+  ["solo", "Yakka o‘yin"],
+] as const;
+
+function buildArenaGameUrl(raw: string): string {
+  try {
+    const u = new URL(raw);
+    if (u.hostname.endsWith(".vercel.app") && !u.searchParams.has("embed")) {
+      u.searchParams.set("embed", "1");
+    }
+    return u.toString();
+  } catch {
+    return raw;
+  }
+}
+
+function StudentInlineGamesArena({
+  studentCode,
+  activeGame,
+  setActiveGame,
+  onGameStart,
+}: {
+  studentCode: string;
+  activeGame: any;
+  setActiveGame: (g: any) => void;
+  onGameStart: () => void;
+}) {
+  const [search, setSearch] = useState("");
+  const [mode, setMode] = useState("");
+  const stageRef = useRef<HTMLDivElement>(null);
+
+  const gamesRes = useData(
+    `/api/v2/games?q=${encodeURIComponent(search)}&mode=${encodeURIComponent(mode)}&student_code=${encodeURIComponent(studentCode)}`,
+  );
+  const items: any[] = gamesRes.data?.items || [];
+
+  function launchGame(g: any) {
+    fetch(
+      `/api/v2/games/${encodeURIComponent(g.id)}/play?student_code=${encodeURIComponent(studentCode)}`,
+      { method: "POST" },
+    ).catch(() => {});
+    onGameStart();
+    if (g.open_mode === "newtab") {
+      window.open(g.url, "_blank", "noopener,noreferrer");
+      return;
+    }
+    setActiveGame(g);
+  }
+
+  function toggleFullscreen() {
+    const el = stageRef.current;
+    if (!el) return;
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+    } else {
+      el.requestFullscreen?.().catch(() => {});
+    }
+  }
+
+  if (activeGame) {
+    const finalUrl = buildArenaGameUrl(activeGame.url);
+    return (
+      <div className="mg-game-stage" ref={stageRef}>
+        <div className="mg-game-stage-bar">
+          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+            <button
+              type="button"
+              className="mg-game-btn-ghost"
+              onClick={() => setActiveGame(null)}
+            >
+              <ArrowLeft size={15} /> O‘yinlar
+            </button>
+            <strong className="mg-game-stage-title">{activeGame.title}</strong>
+            <span className="mg-game-mode-pill">{activeGame.category || "Arena"}</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button type="button" className="mg-game-btn-ghost" onClick={toggleFullscreen}>
+              <Maximize2 size={14} /> To‘liq ekran
+            </button>
+            <a
+              href={activeGame.url}
+              target="_blank"
+              rel="noreferrer"
+              className="mg-game-btn-ghost"
+              title="Alohida oynada ochish"
+            >
+              <ExternalLink size={14} />
+            </a>
+          </div>
+        </div>
+        <iframe
+          className="mg-game-iframe"
+          src={finalUrl}
+          title={activeGame.title}
+          allow="fullscreen; autoplay; gamepad; microphone"
+          allowFullScreen
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="mg-games-wrap">
+      <div className="mg-games-hero">
+        <div className="mg-games-hero-top">
+          <div>
+            <span className="mg-games-eyebrow">
+              <Gamepad2 size={14} /> O‘YINLAR ARENASI
+            </span>
+            <h2 className="mg-games-title">Bilim bellashuvi va interaktiv o‘yinlar</h2>
+            <p className="mg-games-sub">
+              O‘yinni tanlang — u shu kabinetning o‘zida ochiladi va kunlik quest uchun bonus Coin beradi.
+            </p>
+          </div>
+          <div className="mg-games-search">
+            <Search size={15} />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="O‘yin qidirish…"
+            />
+          </div>
+        </div>
+        <div className="mg-games-modes">
+          {GAME_MODES.map(([v, label]) => (
+            <button
+              key={v}
+              type="button"
+              className={"mg-game-filter" + (mode === v ? " is-active" : "")}
+              onClick={() => setMode(v)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {gamesRes.loading ? (
+        <Busy />
+      ) : gamesRes.error ? (
+        <ErrorBox error={gamesRes.error} retry={gamesRes.reload} />
+      ) : !items.length ? (
+        <div className="mg-game-empty">
+          <Gamepad2 size={32} color="#60a5fa" />
+          <strong>Hozircha o‘yinlar qo‘shilmagan</strong>
+          <p>Tez orada yangi ta’limiy o‘yinlar va 1 vs 1 duellar shu yerda paydo bo‘ladi.</p>
+        </div>
+      ) : (
+        <div className="mg-games-grid">
+          {items.map((g: any, idx: number) => {
+            const palettes = [
+              "linear-gradient(135deg, #1e3a8a 0%, #7c3aed 100%)",
+              "linear-gradient(135deg, #065f46 0%, #0284c7 100%)",
+              "linear-gradient(135deg, #7c2d12 0%, #d97706 100%)",
+              "linear-gradient(135deg, #312e81 0%, #db2777 100%)",
+            ];
+            const bg = palettes[idx % palettes.length];
+            const modeLabel = GAME_MODES.find(([k]) => k === g.mode)?.[1] || g.mode || "O‘yin";
+            return (
+              <article className="mg-game-card" key={g.id}>
+                <div
+                  className="mg-game-cover"
+                  style={
+                    g.cover_url
+                      ? { backgroundImage: `linear-gradient(180deg, rgba(13,21,38,0.15), rgba(13,21,38,0.85)), url(${g.cover_url})`, backgroundSize: "cover", backgroundPosition: "center" }
+                      : { background: bg }
+                  }
+                >
+                  <span className="mg-game-mode-pill">{modeLabel}</span>
+                  {!g.cover_url && <Gamepad2 size={34} color="rgba(255,255,255,0.85)" />}
+                </div>
+                <div className="mg-game-body">
+                  <div className="mg-game-meta">
+                    <span>{g.category || "Viktorina"}</span>
+                    <span>{Number(g.plays_count || 0)} marta o‘ynalgan</span>
+                  </div>
+                  <h3>{g.title}</h3>
+                  {g.description && <p>{g.description}</p>}
+                  <button
+                    type="button"
+                    className="mg-game-play-btn"
+                    onClick={() => launchGame(g)}
+                  >
+                    <Play size={15} fill="currentColor" /> O‘ynash
+                  </button>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }

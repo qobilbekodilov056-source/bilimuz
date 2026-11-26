@@ -307,10 +307,10 @@ export function LandingPage() {
               <strong>Kurs jurnali</strong>
               <small>Davomat &amp; Baho</small>
             </Link>
-            <Link to="/student" className="lp-tile is-cosmic">
-              <Gamepad2 size={20} />
-              <strong>O‘yinlar</strong>
-              <small>Bilim bellashuvi</small>
+            <Link to="/practice" className="lp-tile is-cosmic">
+              <Sparkles size={20} />
+              <strong>Ochiq testlar</strong>
+              <small>IELTS, DTM &amp; Sinovlar</small>
             </Link>
           </div>
         </section>
