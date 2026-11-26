@@ -1689,6 +1689,30 @@ export function PracticeExam() {
   const card = pack.data.card;
   const questions: any[] = pack.data.questions || [];
 
+  if (card?.auth_required) {
+    return (
+      <div className="exam-join">
+        <Link to="/practice" className="back-link">
+          <ArrowLeft size={17} />
+          Ochiq testlar
+        </Link>
+        <div className="panel" style={{ maxWidth: 520, margin: "16px auto", textAlign: "center", display: "flex", flexDirection: "column", gap: 14, padding: "32px 24px" }}>
+          <Pill tone="blue">🔐 RO‘YXATDAN O‘TISH TALAB ETILADI</Pill>
+          <h1 style={{ margin: 0 }}>{card.title}</h1>
+          <p className="muted" style={{ margin: 0 }}>
+            {Number(card.price_uzs || 0) > 0
+              ? `Bu pullik test (${Number(card.price_uzs).toLocaleString("uz-UZ")} so‘m). Uni alohida sotib olish yoki «Ustoz Pro / Ultra» obunasi orqali ochish uchun avval tizimga kiring.`
+              : "Bepul mashq testini yechish va natijalaringizni saqlash uchun 1 daqiqada tizimga kiring."}
+          </p>
+          <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap", marginTop: 6 }}>
+            <Link className="btn primary" to="/login">Kirish</Link>
+            <Link className="btn secondary" to="/register">Ro‘yxatdan o‘tish</Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (card?.locked) {
     return (
       <div className="exam-join">
@@ -1719,8 +1743,11 @@ export function PracticeExam() {
                 <input name="buyer_phone" placeholder="+998 90 123 45 67" />
               </label>
               <button type="submit" className="btn primary full" disabled={buyBusy}>
-                {buyBusy ? "Tayyorlanmoqda..." : `Testni sotib olish — ${Number(card.price_uzs || 0).toLocaleString("uz-UZ")} so‘m`}
+                {buyBusy ? "Tayyorlanmoqda..." : `Alohida sotib olish — ${Number(card.price_uzs || 0).toLocaleString("uz-UZ")} so‘m`}
               </button>
+              <Link to="/studio/billing" className="btn secondary full" style={{ textAlign: "center" }}>
+                ⚡ Obuna bilan barcha pullik test va kitoblarni ochish (49 000 so‘m/oy)
+              </Link>
             </form>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>

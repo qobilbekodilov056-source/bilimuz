@@ -2,6 +2,8 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "./types";
 import { body, fail, first, id, now, rate, rows, stmt } from "./core";
+import { authenticate } from "./auth";
+import { getEffectivePlan } from "./billing";
 
 export const libraryPublic = new Hono<AppEnv>();
 export const libraryTeacher = new Hono<AppEnv>();
@@ -204,7 +206,8 @@ libraryPublic.get("/cover/:id", async (c) => {
 
 // Pullik kitob uchun P2P buyurtma yaratish (unikal so'm qo'shimchasi bilan)
 libraryPublic.post("/:id/buy", async (c) => {
-  await rate(c, "book-buy", 30, 60);
+  const principal = await authenticate(c);
+  await rate(c, "book-buy", 30, 60, principal.userId);
   const book: any = await first(
     c.env.DB,
     "SELECT id, title, price_uzs FROM library_books WHERE id=? AND published=1 AND moderation_status='approved'",
@@ -236,10 +239,11 @@ libraryPublic.post("/:id/buy", async (c) => {
   const expiresAt = ts + 30 * 60;
   await stmt(
     c.env.DB,
-    `INSERT INTO library_book_orders(id, book_id, buyer_name, buyer_phone, amount, unique_amount, status, unlock_token, tx_note, created_at, expires_at)
-     VALUES(?,?,?,?,?,?,'pending',?,'',?,?)`,
+    `INSERT INTO library_book_orders(id, book_id, user_id, buyer_name, buyer_phone, amount, unique_amount, status, unlock_token, tx_note, created_at, expires_at)
+     VALUES(?,?,?,?,?,?,?,'pending',?,'',?,?)`,
     oid,
     book.id,
+    principal.userId,
     d.buyer_name,
     d.buyer_phone,
     price,
@@ -316,17 +320,64 @@ libraryPublic.get("/:id", async (c) => {
     book.id,
   );
 
+  let principal: any = null;
+  try {
+    principal = await authenticate(c);
+  } catch {}
   const priceUzs = Number(book.price_uzs || 0);
+  if (!principal) {
+    return c.json({
+      book: {
+        ...book,
+        price_uzs: priceUzs,
+        auth_required: true,
+        unlocked: false,
+        views_count: Number(book.views_count || 0) + 1,
+        published: !!book.published,
+      },
+      chapters: chapters.map((ch: any) => ({
+        id: ch.id,
+        position: ch.position,
+        title: ch.title,
+        summary: ch.summary || "",
+        content: "",
+        updated_at: ch.updated_at,
+        locked: true,
+      })),
+      related,
+    });
+  }
+
   let unlocked = priceUzs <= 0;
-  const tok = String(c.req.query("token") || "").trim();
-  if (!unlocked && tok) {
+  let unlockedVia = priceUzs <= 0 ? "free" : "";
+  if (!unlocked) {
+    if (principal.scope === "owner") {
+      unlocked = true;
+      unlockedVia = "subscription";
+    } else if (principal.tenantId) {
+      const plan = await getEffectivePlan(c.env.DB, principal.tenantId);
+      if (plan.id !== "free") {
+        unlocked = true;
+        unlockedVia = "subscription";
+      }
+    }
+  }
+  if (!unlocked) {
+    const tok = String(c.req.query("token") || "").trim();
     const paidOrd = await first(
       c.env.DB,
-      "SELECT id FROM library_book_orders WHERE book_id=? AND unlock_token=? AND status='paid' LIMIT 1",
+      `SELECT id FROM library_book_orders
+       WHERE book_id=? AND status='paid' AND (user_id=? OR (? != '' AND unlock_token=?))
+       LIMIT 1`,
       book.id,
+      principal.userId,
+      tok,
       tok,
     );
-    if (paidOrd) unlocked = true;
+    if (paidOrd) {
+      unlocked = true;
+      unlockedVia = "purchase";
+    }
   }
   const safeChapters = chapters.map((ch: any, idx: number) => {
     if (unlocked || idx === 0) return { ...ch, locked: false };
@@ -344,7 +395,9 @@ libraryPublic.get("/:id", async (c) => {
     book: {
       ...book,
       price_uzs: priceUzs,
+      auth_required: false,
       unlocked,
+      unlocked_via: unlockedVia,
       views_count: Number(book.views_count || 0) + 1,
       published: !!book.published,
     },

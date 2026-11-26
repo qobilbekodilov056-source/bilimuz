@@ -1,3 +1,5 @@
+import { authenticate } from "./auth";
+import { getEffectivePlan } from "./billing";
 function calcAttemptCoins(pct: number, passed: boolean, s: any): number {
   const custom = Number(s?.reward_coins || 0);
   if (passed && custom > 0) return custom;
@@ -793,7 +795,8 @@ exam.get("/practice", async (c) => {
 
 
 exam.post("/practice/:slug/buy", async (c) => {
-  await rate(c, "practice-buy", 30, 60);
+  const principal = await authenticate(c);
+  await rate(c, "practice-buy", 30, 60, principal.userId);
   const card = await getPublicCard(c);
   const s = JSON.parse(card.settings_json);
   if (card.status !== "active" || s.access_mode !== "open" || card.group_id)
@@ -824,11 +827,12 @@ exam.post("/practice/:slug/buy", async (c) => {
   const expiresAt = ts + 30 * 60;
   await stmt(
     c.env.DB,
-    `INSERT INTO test_card_orders(id, card_id, card_slug, buyer_name, buyer_phone, amount, unique_amount, status, unlock_token, tx_note, created_at, expires_at)
-     VALUES(?,?,?,?,?,?,?,'pending',?,'',?,?)`,
+    `INSERT INTO test_card_orders(id, card_id, card_slug, user_id, buyer_name, buyer_phone, amount, unique_amount, status, unlock_token, tx_note, created_at, expires_at)
+     VALUES(?,?,?,?,?,?,?,?,'pending',?,'',?,?)`,
     oid,
     card.id,
     card.slug,
+    principal.userId,
     d.buyer_name,
     d.buyer_phone,
     price,
@@ -879,20 +883,40 @@ exam.get("/practice/:slug", async (c) => {
   const s = JSON.parse(card.settings_json);
   if (card.status !== "active" || s.access_mode !== "open" || card.group_id)
     fail("Bu test ochiq mashq rejimida mavjud emas", 403);
+  let principal: any = null;
+  try {
+    principal = await authenticate(c);
+  } catch {}
   const priceUzs = Number(card.price_uzs || 0);
+  if (!principal) {
+    return c.json({
+      card: { ...publicCard(card), auth_required: true, locked: true, unlocked: false },
+      questions: [],
+    });
+  }
   if (priceUzs > 0) {
-    const tok = String(c.req.query("token") || "").trim();
-    const paidOrd = tok
-      ? await first(
-          c.env.DB,
-          "SELECT id FROM test_card_orders WHERE card_id=? AND unlock_token=? AND status='paid' LIMIT 1",
-          card.id,
-          tok,
-        )
-      : null;
-    if (!paidOrd) {
+    let unlocked = principal.scope === "owner";
+    if (!unlocked && principal.tenantId) {
+      const plan = await getEffectivePlan(c.env.DB, principal.tenantId);
+      if (plan.id !== "free") unlocked = true;
+    }
+    if (!unlocked) {
+      const tok = String(c.req.query("token") || "").trim();
+      const paidOrd = await first(
+        c.env.DB,
+        `SELECT id FROM test_card_orders
+         WHERE card_id=? AND status='paid' AND (user_id=? OR (? != '' AND unlock_token=?))
+         LIMIT 1`,
+        card.id,
+        principal.userId,
+        tok,
+        tok,
+      );
+      if (paidOrd) unlocked = true;
+    }
+    if (!unlocked) {
       return c.json({
-        card: { ...publicCard(card), locked: true, unlocked: false },
+        card: { ...publicCard(card), auth_required: false, locked: true, unlocked: false },
         questions: [],
       });
     }

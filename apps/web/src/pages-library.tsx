@@ -596,15 +596,33 @@ export function LibraryBookReader() {
               {activeChapter.summary && (
                 <div className="lib-ch-summary">{activeChapter.summary}</div>
               )}
-              <div className="lib-prose">{activeChapter.locked ? (
+              <div className="lib-prose">{book.auth_required ? (
+                  <div className="panel" style={{ textAlign: "center", padding: "36px 20px", background: "#f8fafc", border: "1.5px dashed #162d3d" }}>
+                    <h3 style={{ margin: "0 0 8px" }}>🔐 Kitobni o‘qish uchun tizimga kiring</h3>
+                    <p className="muted" style={{ maxWidth: 460, margin: "0 auto 18px" }}>
+                      {Number(book.price_uzs || 0) > 0
+                        ? "Bepul ro‘yxatdan o‘tib 1-bobni o‘qishingiz, keyin kitobni alohida yoki «Ustoz Pro / Ultra» obunasi ichida ochishingiz mumkin."
+                        : "Kutubxonadagi barcha bepul darslik va qo‘llanmalarni o‘qish uchun 1 daqiqada tizimga kiring."}
+                    </p>
+                    <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+                      <Link className="btn primary" to="/login">Kirish</Link>
+                      <Link className="btn secondary" to="/register">Ro‘yxatdan o‘tish</Link>
+                    </div>
+                  </div>
+                ) : activeChapter.locked ? (
                   <div className="panel" style={{ textAlign: "center", padding: "36px 20px", background: "#f8fafc", border: "1.5px dashed #0c8066" }}>
                     <h3 style={{ margin: "0 0 8px" }}>🔒 Bu bob pullik qo‘llanma tarkibida</h3>
-                    <p className="muted" style={{ maxWidth: 440, margin: "0 auto 18px" }}>
-                      1-bob bepul tanishuv uchun ochiq. Barcha boblar va to‘liq materiallarni ochish uchun kitobni 1 marta sotib oling — 24/7 avtomatik ochiladi!
+                    <p className="muted" style={{ maxWidth: 480, margin: "0 auto 18px" }}>
+                      Ikki qulay yo‘ldan birini tanlang: faqat shu kitobni 1 marta sotib oling yoki <strong>Ustoz Pro / Ultra</strong> obunasi bilan platformadagi <strong>barcha pullik kitob va testlarni</strong> birdan oching!
                     </p>
-                    <button type="button" className="btn primary" onClick={() => setBuyModal(true)}>
-                      Kitobni sotib olish — {Number(book.price_uzs || 0).toLocaleString("uz-UZ")} so‘m
-                    </button>
+                    <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+                      <button type="button" className="btn primary" onClick={() => setBuyModal(true)}>
+                        Alohida sotib olish — {Number(book.price_uzs || 0).toLocaleString("uz-UZ")} so‘m
+                      </button>
+                      <Link className="btn secondary" to="/studio/billing">
+                        ⚡ Obuna bilan hammasini ochish (49 000 so‘m/oy)
+                      </Link>
+                    </div>
                   </div>
                 ) : (
                   renderBookBlocks(activeChapter.content)
